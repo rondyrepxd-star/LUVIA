@@ -1,0 +1,35 @@
+{
+  "node": {
+    "4076d4f13bb8efdea9ebeea3811a2d45d0c5cca31a": {
+      "workers": {
+        "app/page": {
+          "moduleId": "[project]/cerebroooooo-nota/.next-internal/server/app/page/actions.js { ACTIONS_MODULE0 => \"[project]/cerebroooooo-nota/src/ai/flows/process-document-flow.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE1 => \"[project]/cerebroooooo-nota/src/ai/flows/study-assistant-chat-flow.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "processDocument",
+          "filename": "cerebroooooo-nota/src/ai/flows/process-document-flow.ts"
+        }
+      },
+      "layer": {
+        "app/page": "action-browser"
+      },
+      "exportedName": "processDocument",
+      "filename": "cerebroooooo-nota/src/ai/flows/process-document-flow.ts"
+    },
+    "40e02fdcca70eacb510742abae3d661a4a774bf656": {
+      "workers": {
+        "app/page": {
+          "moduleId": "[project]/cerebroooooo-nota/.next-internal/server/app/page/actions.js { ACTIONS_MODULE0 => \"[project]/cerebroooooo-nota/src/ai/flows/process-document-flow.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE1 => \"[project]/cerebroooooo-nota/src/ai/flows/study-assistant-chat-flow.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "studyAssistantChat",
+          "filename": "cerebroooooo-nota/src/ai/flows/study-assistant-chat-flow.ts"
+        }
+      },
+      "layer": {
+        "app/page": "action-browser"
+      },
+      "exportedName": "studyAssistantChat",
+      "filename": "cerebroooooo-nota/src/ai/flows/study-assistant-chat-flow.ts"
+    }
+  },
+  "edge": {}
+}

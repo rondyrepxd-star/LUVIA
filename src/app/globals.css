@@ -1,0 +1,167 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 240 10% 3.9%;
+    --foreground: 0 0% 98%;
+    --card: 240 10% 3.9%;
+    --card-foreground: 0 0% 98%;
+    --popover: 240 10% 3.9%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 263.4 70% 50.4%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 240 3.7% 15.9%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 240 3.7% 15.9%;
+    --muted-foreground: 240 5% 64.9%;
+    --accent: 240 3.7% 15.9%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 3.7% 15.9%;
+    --input: 240 3.7% 15.9%;
+    --ring: 263.4 70% 50.4%;
+    --radius: 0.75rem;
+  }
+}
+
+/* --- TEMAS PREMIUM --- */
+
+/* Aurora Glass Theme */
+.theme-aurora {
+  --primary: 267 100% 70%;
+  --ring: 267 100% 70%;
+  background: radial-gradient(ellipse at 10% 0%, rgba(99, 102, 241, 0.15) 0%, transparent 55%), 
+              radial-gradient(ellipse at 90% 80%, rgba(168, 85, 247, 0.1) 0%, transparent 55%), 
+              #050508 !important;
+}
+
+/* Crimson Void Theme */
+.theme-crimson {
+  --primary: 0 84% 60%;
+  --ring: 0 84% 60%;
+  background: radial-gradient(ellipse at 10% 0%, rgba(239, 68, 68, 0.12) 0%, transparent 50%), 
+              radial-gradient(ellipse at 90% 90%, rgba(153, 27, 27, 0.08) 0%, transparent 50%), 
+              #030101 !important;
+}
+
+/* Emerald Mist Theme */
+.theme-emerald {
+  --primary: 160 84% 45%;
+  --ring: 160 84% 45%;
+  background: radial-gradient(ellipse at 15% 0%, rgba(16, 185, 129, 0.1) 0%, transparent 50%), 
+              radial-gradient(ellipse at 85% 90%, rgba(5, 150, 105, 0.06) 0%, transparent 50%), 
+              #010806 !important;
+}
+
+/* Estilos de Scrollbar Premium */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* Horizontal Scrollbar specifically for Gallery */
+.custom-scrollbar-h::-webkit-scrollbar {
+  height: 8px !important;
+}
+.custom-scrollbar-h::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 20px;
+  margin: 0 2rem;
+}
+.custom-scrollbar-h::-webkit-scrollbar-thumb {
+  background: linear-gradient(to right, #6366f1, #a855f7) !important;
+  border-radius: 20px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.custom-scrollbar-h::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(to right, #818cf8, #c084fc) !important;
+  box-shadow: 0 0 15px rgba(168, 85, 247, 0.5);
+}
+
+/* Citations Style */
+blockquote {
+  border-left: 6px solid #3b82f6 !important;
+  background: linear-gradient(to right, rgba(59, 130, 246, 0.08), transparent) !important;
+  padding: 1.25rem 2.5rem !important;
+  margin: 2rem 0 !important;
+  border-radius: 4px 1.5rem 1.5rem 4px;
+  font-style: italic;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.9);
+  box-shadow: inset 20px 0 30px -20px rgba(59, 130, 246, 0.2);
+}
+
+/* Notebook Editor Lists (Google Docs style) */
+.editor-content ul {
+  list-style-type: disc !important;
+  margin-left: 2.5rem !important;
+  padding-left: 0.5rem !important;
+  margin-top: 0.75rem !important;
+  margin-bottom: 0.75rem !important;
+}
+
+.editor-content ol {
+  list-style-type: decimal !important;
+  margin-left: 2.5rem !important;
+  padding-left: 0.5rem !important;
+  margin-top: 0.75rem !important;
+  margin-bottom: 0.75rem !important;
+}
+
+.editor-content li {
+  margin-bottom: 0.4rem !important;
+  display: list-item !important;
+}
+
+.editor-content li > p {
+  display: inline;
+}
+
+.editor-content ul ul, .editor-content ol ul {
+  list-style-type: circle !important;
+  margin-top: 0.25rem !important;
+}
+
+.editor-content ul ol, .editor-content ol ol {
+  list-style-type: lower-alpha !important;
+  margin-top: 0.25rem !important;
+}
+
+/* Notebook Editor Horizontal Rule (Divisor) */
+.editor-content hr {
+  border: none !important;
+  height: 2px !important;
+  background: linear-gradient(to right, transparent, rgba(255, 255, 255, 0.1), transparent) !important;
+  margin: 2.5rem 0 !important;
+  position: relative;
+}
+
+.editor-content hr::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 40px;
+  height: 4px;
+  background: hsl(var(--primary));
+  border-radius: 99px;
+  filter: blur(4px);
+  opacity: 0.3;
+}
