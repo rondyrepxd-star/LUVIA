@@ -1011,7 +1011,8 @@ const Notebook = ({
                       </div>
                     </PopoverContent>
                   </Popover>
-                            {/* Column Selection Pill (Top) */}
+                </div>
+                {/* Column Selection Pill (Top) */}
                 <Popover>
                   <PopoverTrigger asChild>
                     <div 
