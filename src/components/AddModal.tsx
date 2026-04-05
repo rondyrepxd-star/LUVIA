@@ -64,7 +64,7 @@ const AddModal = ({ isOpen, onClose, onNoteCreate, onFileUpload }: AddModalProps
               >
                 <CardContent className="p-6 flex items-start gap-4">
                   <div className="w-12 h-12 rounded-xl bg-sidebar-accent flex items-center justify-center text-primary group-hover:scale-110 transition-transform">
-                    {React.cloneElement(option.icon as React.ReactElement, { size: 24 })}
+                    {React.cloneElement(option.icon as React.ReactElement<any>, { size: 24 })}
                   </div>
                   <div>
                     <h3 className="font-bold text-lg">{option.name}</h3>
