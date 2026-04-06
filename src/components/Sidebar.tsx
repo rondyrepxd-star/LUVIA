@@ -227,8 +227,10 @@ const Sidebar = ({
     const subFolders = folders.filter(f => f.parentId === folderId);
     const folderNotes = filteredNotes.filter(n => n.folderId === folderId);
 
+    const indent = Math.min(depth, 2) * 8;
+
     return (
-      <div className={cn("py-1 space-y-1 border-l border-border/20", depth === 0 ? "ml-9" : "ml-4")}>
+      <div className="py-1 space-y-1 border-l border-border/20 overflow-hidden min-w-0" style={{ marginLeft: `${indent}px` }}>
         {folderNotes.map((note) => (
           <div 
             key={note.id} 

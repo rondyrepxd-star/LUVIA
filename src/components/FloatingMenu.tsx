@@ -194,7 +194,7 @@ const FloatingMenu = ({
   useEffect(() => {
     if (!isAnchored && menuRef.current) {
       const node = menuRef.current;
-      node.style.transform = `translateX(-50%) translateY(-100%) translate(${noteOffset.x}px, ${noteOffset.y}px)`;
+      node.style.transform = isNoteOpen ? `translate(-50%, -50%) translate(${noteOffset.x}px, ${noteOffset.y}px)` : `translateX(-50%) translateY(-100%) translate(${noteOffset.x}px, ${noteOffset.y}px)`;
       
       const checkBounds = () => {
         const rect = node.getBoundingClientRect();
@@ -214,7 +214,7 @@ const FloatingMenu = ({
         }
 
         if (dx !== 0 || dy !== 0) {
-          node.style.transform = `translateX(-50%) translateY(-100%) translate(${noteOffset.x + dx}px, ${noteOffset.y + dy}px)`;
+          node.style.transform = isNoteOpen ? `translate(-50%, -50%) translate(${noteOffset.x + dx}px, ${noteOffset.y + dy}px)` : `translateX(-50%) translateY(-100%) translate(${noteOffset.x + dx}px, ${noteOffset.y + dy}px)`;
         }
       };
 
@@ -343,9 +343,16 @@ const FloatingMenu = ({
     }
   };
 
+  const startHandleDrag = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+    setDragStart({ x: e.clientX - noteOffset.x, y: e.clientY - noteOffset.y });
+  };
+
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
-      if (isDragging && isMoveMode) {
+      if (isDragging) {
         setNoteOffset({
           x: e.clientX - dragStart.x,
           y: e.clientY - dragStart.y
@@ -362,7 +369,7 @@ const FloatingMenu = ({
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [isDragging, isMoveMode, dragStart]);
+  }, [isDragging, dragStart]);
 
   const handleLinkButtonClick = () => {
     const selection = window.getSelection();
@@ -592,9 +599,9 @@ const FloatingMenu = ({
           isNoteOpen && "notame-editor-active"
         )}
         style={!isAnchored ? { 
-          left: position.x, 
-          top: position.y, 
-          transform: `translateX(-50%) translateY(-100%) translate(${noteOffset.x}px, ${noteOffset.y}px)` 
+          left: isNoteOpen ? '50%' : position.x, 
+          top: isNoteOpen ? '50%' : position.y, 
+          transform: isNoteOpen ? `translate(-50%, -50%) translate(${noteOffset.x}px, ${noteOffset.y}px)` : `translateX(-50%) translateY(-100%) translate(${noteOffset.x}px, ${noteOffset.y}px)` 
         } : {}}
         onMouseDown={(e) => e.stopPropagation()}
       >
@@ -611,80 +618,129 @@ const FloatingMenu = ({
         )}
 
         {isNoteOpen ? (
-          <div 
-            onMouseDown={handleNoteMouseDown}
-            onDoubleClick={toggleMoveModeViaDoubleClick}
-            className={cn(
-              "bg-[#0f0f11]/95 backdrop-blur-xl border border-white/5 rounded-[1.5rem] shadow-[0_30px_60px_-12px_rgba(0,0,0,0.6)] w-[320px] overflow-hidden flex flex-col animate-in zoom-in-95 fade-in duration-300",
-              isMoveMode ? "cursor-move ring-2 ring-primary/50" : "cursor-default"
-            )}
-          >
-            <div className="p-5 flex justify-between items-start">
-              <div className="flex flex-col gap-1 overflow-hidden pr-4">
-                <span className="text-[9px] font-black uppercase tracking-[0.2em] text-primary italic">NOMBRE DE NOTA</span>
-                <div className="flex items-center gap-2 overflow-hidden">
-                  <p className="text-sm font-black text-white/90 truncate italic">"{selectedReference}"</p>
-                  <span className="text-[10px] font-bold text-white/20 uppercase tracking-widest shrink-0">• Nota rápida</span>
+          <div className="relative group/note-wrapper">
+            {/* TOP drag handle */}
+            <div
+              className="absolute -top-5 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-0.5 cursor-grab active:cursor-grabbing group/handle select-none"
+              onMouseDown={startHandleDrag}
+            >
+              <div className="flex items-center gap-1 bg-[#1a1a1e] border border-red-500/40 rounded-full px-3 py-1 shadow-[0_0_12px_rgba(239,68,68,0.3)] hover:bg-red-500/10 hover:border-red-500/70 transition-all duration-200">
+                <div className="grid grid-cols-3 gap-[3px]">
+                  {[...Array(6)].map((_, i) => <div key={i} className="w-[3px] h-[3px] rounded-full bg-red-400/80 group-hover/handle:bg-red-400" />)}
+                </div>
+                <span className="text-[8px] font-black uppercase tracking-[0.15em] text-red-400/70 group-hover/handle:text-red-400 ml-1.5 transition-colors">MOVER</span>
+              </div>
+            </div>
+            {/* BOTTOM drag handle */}
+            <div
+              className="absolute -bottom-5 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-0.5 cursor-grab active:cursor-grabbing group/handle select-none"
+              onMouseDown={startHandleDrag}
+            >
+              <div className="flex items-center gap-1 bg-[#1a1a1e] border border-red-500/40 rounded-full px-3 py-1 shadow-[0_0_12px_rgba(239,68,68,0.3)] hover:bg-red-500/10 hover:border-red-500/70 transition-all duration-200">
+                <div className="grid grid-cols-3 gap-[3px]">
+                  {[...Array(6)].map((_, i) => <div key={i} className="w-[3px] h-[3px] rounded-full bg-red-400/80 group-hover/handle:bg-red-400" />)}
+                </div>
+                <span className="text-[8px] font-black uppercase tracking-[0.15em] text-red-400/70 group-hover/handle:text-red-400 ml-1.5 transition-colors">MOVER</span>
+              </div>
+            </div>
+            {/* LEFT drag handle */}
+            <div
+              className="absolute -left-5 top-1/2 -translate-y-1/2 z-50 flex flex-row items-center gap-0.5 cursor-grab active:cursor-grabbing group/handle select-none"
+              onMouseDown={startHandleDrag}
+            >
+              <div className="flex flex-col items-center gap-1 bg-[#1a1a1e] border border-red-500/40 rounded-full px-1 py-3 shadow-[0_0_12px_rgba(239,68,68,0.3)] hover:bg-red-500/10 hover:border-red-500/70 transition-all duration-200">
+                <div className="grid grid-rows-3 gap-[3px]">
+                  {[...Array(6)].map((_, i) => <div key={i} className="w-[3px] h-[3px] rounded-full bg-red-400/80 group-hover/handle:bg-red-400" />)}
                 </div>
               </div>
-              <div className="flex items-center gap-1.5 shrink-0">
-                <button 
-                  onClick={(e) => { e.stopPropagation(); onClose(); }} 
-                  className="text-white/20 hover:text-white transition-colors p-1 ml-1"
-                >
-                  <X size={16} />
-                </button>
+            </div>
+            {/* RIGHT drag handle */}
+            <div
+              className="absolute -right-5 top-1/2 -translate-y-1/2 z-50 flex flex-row items-center gap-0.5 cursor-grab active:cursor-grabbing group/handle select-none"
+              onMouseDown={startHandleDrag}
+            >
+              <div className="flex flex-col items-center gap-1 bg-[#1a1a1e] border border-red-500/40 rounded-full px-1 py-3 shadow-[0_0_12px_rgba(239,68,68,0.3)] hover:bg-red-500/10 hover:border-red-500/70 transition-all duration-200">
+                <div className="grid grid-rows-3 gap-[3px]">
+                  {[...Array(6)].map((_, i) => <div key={i} className="w-[3px] h-[3px] rounded-full bg-red-400/80 group-hover/handle:bg-red-400" />)}
+                </div>
               </div>
             </div>
 
-            <div className="px-5 pb-5 relative group/editor">
-              <div
-                ref={noteEditorRef}
-                contentEditable={!isMoveMode}
-                onInput={handleNoteInput}
-                className={cn(
-                  "w-full bg-transparent border-none outline-none text-sm font-medium text-white/80 placeholder:text-white/10 min-h-[140px] max-h-[300px] overflow-y-auto scrollbar-hide focus:ring-0",
-                  isMoveMode ? "pointer-events-none opacity-50" : ""
-                )}
-                data-placeholder="Escribe tu nota aquí"
-              />
-              {!noteText && (
-                <div className="absolute top-0 left-5 text-white/10 text-sm italic pointer-events-none">Escribe tu nota aquí</div>
+            <div 
+              onMouseDown={handleNoteMouseDown}
+              onDoubleClick={toggleMoveModeViaDoubleClick}
+              className={cn(
+                "bg-[#0f0f11]/95 backdrop-blur-xl border border-white/5 rounded-[1.5rem] shadow-[0_30px_60px_-12px_rgba(0,0,0,0.6)] w-[320px] overflow-hidden flex flex-col animate-in zoom-in-95 fade-in duration-300",
+                isMoveMode ? "cursor-move ring-2 ring-primary/50" : "cursor-default"
               )}
-              
-              {!isMoveMode && (
-                <div className="absolute bottom-4 right-4 bg-black/40 backdrop-blur-md border border-white/5 rounded-xl px-3 py-1.5 flex items-center gap-4 opacity-0 group/editor:hover:opacity-100 transition-all duration-300 shadow-xl translate-y-1 group/editor:hover:translate-y-0">
-                  <button onClick={() => execCommand('bold')} className="text-white/30 hover:text-white transition-colors"><Bold size={14} /></button>
-                  <button onClick={() => execCommand('italic')} className="text-white/30 hover:text-white transition-colors"><Italic size={14} /></button>
-                </div>
-              )}
-            </div>
-
-            <div className="px-5 py-4 bg-black/40 border-t border-white/5 flex justify-between items-center">
-              <div className="flex items-center gap-3 text-[9px] font-black uppercase tracking-[0.2em] italic">
-                {isMoveMode ? (
-                  <div className="flex items-center gap-2 text-primary animate-pulse">
-                    <Move size={12} /> MODO MOVER (FLECHAS / MOUSE)
+            >
+              <div className="p-5 flex justify-between items-start">
+                <div className="flex flex-col gap-1 overflow-hidden pr-4">
+                  <span className="text-[9px] font-black uppercase tracking-[0.2em] text-primary italic">NOMBRE DE NOTA</span>
+                  <div className="flex items-center gap-2 overflow-hidden">
+                    <p className="text-sm font-black text-white/90 truncate italic">"{selectedReference}"</p>
+                    <span className="text-[10px] font-bold text-white/20 uppercase tracking-widest shrink-0">• Nota rápida</span>
                   </div>
-                ) : (
-                  <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-1.5 text-green-500/80">
-                      <Check size={12} strokeWidth={3} /> GUARDADO
-                    </div>
-                    <div className="w-px h-3 bg-white/10" />
-                    <div className="flex items-center gap-1.5 text-white/20">
-                      <Clock size={12} /> AHORA
-                    </div>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); onClose(); }} 
+                    className="text-white/20 hover:text-white transition-colors p-1 ml-1"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              </div>
+
+              <div className="px-5 pb-5 relative group/editor">
+                <div
+                  ref={noteEditorRef}
+                  contentEditable={!isMoveMode}
+                  onInput={handleNoteInput}
+                  className={cn(
+                    "w-full bg-transparent border-none outline-none text-sm font-medium text-white/80 placeholder:text-white/10 min-h-[140px] max-h-[300px] overflow-y-auto scrollbar-hide focus:ring-0",
+                    isMoveMode ? "pointer-events-none opacity-50" : ""
+                  )}
+                  data-placeholder="Escribe tu nota aquí"
+                />
+                {!noteText && (
+                  <div className="absolute top-0 left-5 text-white/10 text-sm italic pointer-events-none">Escribe tu nota aquí</div>
+                )}
+
+                {!isMoveMode && (
+                  <div className="absolute bottom-4 right-4 bg-black/40 backdrop-blur-md border border-white/5 rounded-xl px-3 py-1.5 flex items-center gap-4 opacity-0 group/editor:hover:opacity-100 transition-all duration-300 shadow-xl translate-y-1 group/editor:hover:translate-y-0">
+                    <button onClick={() => execCommand('bold')} className="text-white/30 hover:text-white transition-colors"><Bold size={14} /></button>
+                    <button onClick={() => execCommand('italic')} className="text-white/30 hover:text-white transition-colors"><Italic size={14} /></button>
                   </div>
                 )}
               </div>
-              <div className="flex items-center gap-1">
-                <button 
-                  onClick={handleDeleteNote}
-                  className="p-2 text-white/20 hover:text-destructive transition-all"
-                >
-                  <Trash2 size={16} />
-                </button>
+
+              <div className="px-5 py-4 bg-black/40 border-t border-white/5 flex justify-between items-center">
+                <div className="flex items-center gap-3 text-[9px] font-black uppercase tracking-[0.2em] italic">
+                  {isMoveMode ? (
+                    <div className="flex items-center gap-2 text-primary animate-pulse">
+                      <Move size={12} /> MODO MOVER (FLECHAS / MOUSE)
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-1.5 text-green-500/80">
+                        <Check size={12} strokeWidth={3} /> GUARDADO
+                      </div>
+                      <div className="w-px h-3 bg-white/10" />
+                      <div className="flex items-center gap-1.5 text-white/20">
+                        <Clock size={12} /> AHORA
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-center gap-1">
+                  <button 
+                    onClick={handleDeleteNote}
+                    className="p-2 text-white/20 hover:text-destructive transition-all"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
               </div>
             </div>
           </div>

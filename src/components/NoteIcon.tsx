@@ -6,7 +6,7 @@ import {
   FileText, Heart, Zap, Star, Shield, Anchor, Rocket,
   Book, Code, Globe, Music, GraduationCap, FlaskConical, Calculator, 
   Languages, Palette, Activity, Brain, Compass, Microscope, Hourglass,
-  Library, Save, Notebook, NotebookPen, Moon, Sun, Coffee, PenTool
+  Library, Save, Notebook, NotebookPen, Moon, Sun, Coffee, PenTool, Folder
 } from 'lucide-react';
 
 interface NoteIconProps {
@@ -45,6 +45,7 @@ const NoteIcon = ({ iconName = 'FileText', size = 16, className }: NoteIconProps
     case 'Compass': return <Compass size={size} className={className} />;
     case 'Microscope': return <Microscope size={size} className={className} />;
     case 'Hourglass': return <Hourglass size={size} className={className} />;
+    case 'Folder': return <Folder size={size} className={className} />;
     default: return <FileText size={size} className={className} />;
   }
 };

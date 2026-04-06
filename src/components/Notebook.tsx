@@ -272,6 +272,16 @@ const Notebook = ({
       if (url) {
         window.open(url, '_blank', 'noopener,noreferrer');
       }
+      return;
+    }
+
+    // 5. Notita click handling
+    const highlight = target.closest('.notame-highlight') as HTMLElement | null;
+    if (highlight && !isAnchored) {
+      if (menuTimeoutRef.current) clearTimeout(menuTimeoutRef.current);
+      const rect = highlight.getBoundingClientRect();
+      setMenuPosition({ x: rect.left + rect.width / 2, y: rect.top - 10 });
+      setShowFloatingMenu(true);
     }
   };
 
@@ -433,16 +443,10 @@ const Notebook = ({
     }
 
     if (isAnchored) return;
-    const highlight = target.closest('.notame-highlight') as HTMLElement | null;
     const menuContainer = target.closest('.floating-menu-container');
     const isNoteActive = document.querySelector('.notame-editor-active');
 
-    if (highlight) {
-      if (menuTimeoutRef.current) clearTimeout(menuTimeoutRef.current);
-      const rect = highlight.getBoundingClientRect();
-      setMenuPosition({ x: rect.left + rect.width / 2, y: rect.top - 10 });
-      setShowFloatingMenu(true);
-    } else if (menuContainer || isNoteActive) {
+    if (menuContainer || isNoteActive) {
       if (menuTimeoutRef.current) clearTimeout(menuTimeoutRef.current);
     } else {
       const selection = window.getSelection();

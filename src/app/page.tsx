@@ -550,7 +550,7 @@ export default function LuviaApp() {
           </div>
         )}
 
-        <div className={cn("transition-all duration-300 overflow-hidden", isSidebarCollapsed ? "w-12" : "w-64")}>
+        <div className={cn("transition-all duration-300 overflow-hidden shrink-0 z-40 bg-[#0d0d0f] md:bg-transparent absolute inset-y-0 left-0 md:relative", isSidebarCollapsed ? "-translate-x-full md:translate-x-0 md:w-12" : "translate-x-0 w-64 md:w-64")}>
           <Sidebar 
             notes={notes}
             folders={folders}
@@ -570,8 +570,8 @@ export default function LuviaApp() {
         
         <div className="flex-1 flex flex-col min-w-0 relative h-full">
           {!isFocusMode && (
-            <div className="z-30 bg-[#0d0d0f]/50 backdrop-blur-xl border-b border-white/5 shrink-0">
-              <div className="flex items-center justify-between px-8 h-16">
+            <div className="z-30 bg-[#0d0d0f]/50 backdrop-blur-xl border-b border-white/5 shrink-0 flex-none">
+              <div className="flex items-center justify-between px-3 md:px-8 h-16 gap-2">
                 {activeNote && (
                   <div className="bg-[#141416] p-1 rounded-2xl inline-flex items-center gap-1 shadow-xl border border-white/5 shrink-0">
                     {tabs.map(tab => (
@@ -589,7 +589,7 @@ export default function LuviaApp() {
                   </div>
                 )}
                 {activeNote && (
-                  <div className="flex-1 flex justify-center items-center px-6 overflow-hidden gap-3">
+                  <div className="flex-1 flex justify-center items-center px-2 md:px-6 overflow-hidden gap-2 md:gap-3">
                     <div 
                       className={cn("w-7 h-7 rounded-lg flex items-center justify-center shrink-0 shadow-lg border border-white/5 transition-all duration-500")}
                       style={activeNote.color ? { backgroundColor: `${activeNote.color}20`, color: activeNote.color } : { backgroundColor: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.4)' }}
@@ -600,7 +600,7 @@ export default function LuviaApp() {
                       type="text"
                       value={activeNote.title}
                       onChange={(e) => updateActiveNote({ title: e.target.value })}
-                      className="bg-transparent border-none outline-none text-[13px] font-bold text-white/90 w-full max-w-[400px] truncate focus:ring-0 placeholder:text-white/20"
+                      className="bg-transparent border-none outline-none text-[13px] font-bold text-white/90 w-full max-w-[150px] md:max-w-[400px] truncate focus:ring-0 placeholder:text-white/20"
                       placeholder="Note Title"
                     />
                   </div>
