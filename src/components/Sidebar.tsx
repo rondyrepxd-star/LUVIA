@@ -390,7 +390,7 @@ const Sidebar = ({
       </div>
       <ScrollArea className="flex-1 px-3">
         <div className="space-y-2 py-2">
-          <div onDragOver={(e) => e.preventDefault()} onDrop={(e) => handleFolderDrop(e, undefined)} className="flex items-center px-2 mb-2 gap-2">
+          <div onDragOver={(e) => e.preventDefault()} onDrop={(e) => handleFolderDrop(e, undefined, 'root')} className="flex items-center px-2 mb-2 gap-2">
             <LayoutGrid size={16} className="text-muted-foreground" />
             <span className="text-sm font-semibold text-muted-foreground uppercase tracking-widest text-[9px]">Library</span>
             <button onClick={() => handleNewFolderClick()} className="p-1 hover:text-primary transition-all text-muted-foreground/40"><FolderDown size={14} /></button>
