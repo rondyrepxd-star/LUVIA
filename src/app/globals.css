@@ -56,6 +56,42 @@
               #010806 !important;
 }
 
+/* Polar Light Theme */
+.theme-light {
+  --background: 0 0% 100%;
+  --foreground: 240 10% 3.9%;
+  --card: 0 0% 100%;
+  --card-foreground: 240 10% 3.9%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 240 10% 3.9%;
+  --primary: 263.4 70% 50.4%;
+  --primary-foreground: 210 40% 98%;
+  --secondary: 240 4.8% 95.9%;
+  --secondary-foreground: 240 5.9% 10%;
+  --muted: 240 4.8% 95.9%;
+  --muted-foreground: 240 3.8% 46.1%;
+  --accent: 240 4.8% 95.9%;
+  --accent-foreground: 240 5.9% 10%;
+  --destructive: 0 84.2% 60.2%;
+  --destructive-foreground: 210 40% 98%;
+  --border: 240 5.9% 90%;
+  --input: 240 5.9% 90%;
+  --ring: 263.4 70% 50.4%;
+  background: #fdfdfd !important;
+  color: #000 !important;
+}
+
+.theme-light .text-white { color: #111 !important; }
+.theme-light .text-white\/50 { color: rgba(0,0,0,0.5) !important; }
+.theme-light .text-white\/30 { color: rgba(0,0,0,0.3) !important; }
+.theme-light .text-white\/10 { color: rgba(0,0,0,0.1) !important; }
+.theme-light .bg-black\/40 { background: rgba(0,0,0,0.05) !important; }
+.theme-light .bg-black\/60 { background: rgba(255,255,255,0.6) !important; }
+.theme-light .bg-\[\#161616\] { background: #fff !important; }
+.theme-light .bg-\[\#111111\] { background: #f5f5f7 !important; }
+.theme-light .border-white\/10 { border-color: rgba(0,0,0,0.1) !important; }
+.theme-light .border-white\/5 { border-color: rgba(0,0,0,0.05) !important; }
+
 /* Estilos de Scrollbar Premium */
 ::-webkit-scrollbar {
   width: 6px;
@@ -188,4 +224,66 @@ blockquote {
 .toggle-container[data-state="closed"] .toggle-icon {
   transform: rotate(-90deg) !important;
 }
+/* Block Handle Styles */
+.block-handle-container {
+  display: flex !important;
+  align-items: center !important;
+  gap: 2px !important;
+  position: absolute !important;
+  z-index: 45 !important;
+  transition: opacity 0.2s ease, transform 0.1s ease !important;
+  pointer-events: auto !important;
+  padding-right: 8px;
+  opacity: 0;
+}
 
+.block-handle-container.visible {
+  opacity: 1;
+}
+
+.block-handle-plus {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  transition: all 0.2s;
+  cursor: pointer;
+}
+
+.block-handle-plus:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: white;
+}
+
+.block-handle-grip {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  transition: all 0.2s;
+  cursor: grab;
+}
+
+.block-handle-grip:hover {
+  background: hsla(var(--primary), 0.1);
+  color: hsl(var(--primary));
+  filter: drop-shadow(0 0 8px hsla(var(--primary), 0.4));
+}
+
+.block-handle-grip:active {
+  cursor: grabbing;
+}
+
+.block-handle-container:hover .block-handle-grip {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.block-handle-container:hover .block-handle-plus {
+  color: rgba(255, 255, 255, 0.5);
+}

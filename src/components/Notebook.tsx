@@ -1,13 +1,14 @@
 "use client";
 
 import React, { useRef, useState, useEffect, useMemo, useCallback } from 'react';
-import { Hash, X, CheckCircle2, ChevronDown, Trash2, Plus, MoreHorizontal, Palette, LayoutGrid, ArrowUp, ArrowDown, ArrowRight } from 'lucide-react';
+import { Hash, X, CheckCircle2, ChevronDown, Trash2, Plus, GripVertical, MoreHorizontal, Palette, LayoutGrid, ArrowUp, ArrowDown, ArrowRight } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import FloatingMenu from './FloatingMenu';
 import TableToolbar from './TableToolbar';
 import ImageToolbar from './ImageToolbar';
 import ImageResizer from './ImageResizer';
 import { cn } from '@/lib/utils';
+import { BlockActionMenu } from './BlockActionMenu';
 import { NotebookWidth } from '@/app/page';
 import {
   AlertDialog,
@@ -104,6 +105,10 @@ const Notebook = ({
     cellTop: 0, cellLeft: 0, cellWidth: 0, cellHeight: 0,
     showPlusRight: false, showPlusBottom: false
   });
+
+  const [hoveredBlock, setHoveredBlock] = useState<HTMLElement | null>(null);
+  const [handleVisible, setHandleVisible] = useState(false);
+  const [handlePos, setHandlePos] = useState({ top: 0, left: 0 });
 
   const handleMouseDown = (e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
@@ -442,6 +447,47 @@ const Notebook = ({
       }
     }
 
+    // --- Block Handle Detection ---
+    if (editorRef.current) {
+      const rect = editorRef.current.getBoundingClientRect();
+      const editorPadding = 60; // Approximate margin area
+      
+      // If mouse is within the editor or its left margin
+      if (e.clientX >= rect.left - 100 && e.clientX <= rect.right) {
+        // Robust top-level block detection
+        let block = target.closest('.editor-content > *') as HTMLElement;
+        
+        // If we are hovering over the editor but not directly over a child, find the closest child
+        if (!block && (target.classList.contains('editor-content') || editorRef.current.contains(target))) {
+           const y = e.clientY;
+           const children = Array.from(editorRef.current.children);
+           block = children.find(child => {
+             const r = child.getBoundingClientRect();
+             return y >= r.top && y <= r.bottom;
+           }) as HTMLElement;
+        }
+
+        if (block && editorRef.current.contains(block) && !block.classList.contains('block-handle-container')) {
+          const blockRect = block.getBoundingClientRect();
+          const editorContainerRect = editorRef.current.parentElement?.getBoundingClientRect();
+          
+          if (editorContainerRect) {
+            setHoveredBlock(block);
+            setHandlePos({
+              top: blockRect.top - editorContainerRect.top,
+              left: (blockRect.left - editorContainerRect.left) - 35
+            });
+            setHandleVisible(true);
+          }
+        }
+      } else {
+        const handleContainer = document.querySelector('.block-handle-container');
+        if (!handleContainer?.contains(e.target as Node)) {
+          setHandleVisible(false);
+        }
+      }
+    }
+
     if (isAnchored) return;
     const menuContainer = target.closest('.floating-menu-container');
     const isNoteActive = document.querySelector('.notame-editor-active');
@@ -595,7 +641,8 @@ const Notebook = ({
   const handleContainerClick = (e: React.MouseEvent) => {
     // If the user clicks on the white space below the content (the padding area)
     if (e.target === e.currentTarget || (e.target as HTMLElement).classList.contains('group/notebook')) {
-      editorRef.current?.focus();
+      // Use preventScroll to avoid jumping if the browser tries to be helpful
+      editorRef.current?.focus({ preventScroll: true });
       
       // Move cursor to the end of the document
       const selection = window.getSelection();
@@ -605,7 +652,92 @@ const Notebook = ({
         range.collapse(false);
         selection.removeAllRanges();
         selection.addRange(range);
+        
+        // Ensure the editor stays in view at the bottom
+        editorRef.current.scrollIntoView({ block: 'end', behavior: 'instant' });
       }
+    }
+  };
+
+  const handleMarginDoubleClick = (e: React.MouseEvent) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const marginSize = 48; // px-12 => 3rem => 48px
+    const scrollContainer = document.querySelector('.notebook-scroll-area');
+
+    if (x < marginSize) {
+      // Left margin -> Scroll to Top
+      if (scrollContainer) scrollContainer.scrollTo({ top: 0, behavior: 'smooth' });
+      else window.scrollTo({ top: 0, behavior: 'smooth' });
+      toast({ title: "Navegación", description: "Volviendo al inicio" });
+    } else if (x > rect.width - marginSize) {
+      // Right margin -> Scroll to Bottom
+      if (scrollContainer) {
+        scrollContainer.scrollTo({ top: scrollContainer.scrollHeight, behavior: 'smooth' });
+      } else {
+        window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+      }
+      toast({ title: "Navegación", description: "Yendo al final" });
+    }
+  };
+
+  const deleteActiveBlock = () => {
+    if (hoveredBlock) {
+      hoveredBlock.remove();
+      setHandleVisible(false);
+      setHoveredBlock(null);
+      if (editorRef.current) setContent(editorRef.current.innerHTML);
+      toast({ title: "Bloque eliminado" });
+    }
+  };
+
+  const duplicateActiveBlock = () => {
+    if (hoveredBlock) {
+      const clone = hoveredBlock.cloneNode(true) as HTMLElement;
+      // Ensure unique IDs if needed, but here we'll just insert
+      hoveredBlock.insertAdjacentElement('afterend', clone);
+      if (editorRef.current) setContent(editorRef.current.innerHTML);
+      toast({ title: "Bloque duplicado" });
+    }
+  };
+
+  const copyActiveBlock = () => {
+    if (hoveredBlock) {
+      navigator.clipboard.writeText(hoveredBlock.innerText);
+      toast({ title: "Copiado al portapapeles" });
+    }
+  };
+
+  const turnActiveBlockInto = (tag: string) => {
+    if (hoveredBlock) {
+       if (tag === 'ul') {
+          hoveredBlock.focus();
+          document.execCommand('insertUnorderedList');
+       } else if (tag === 'ol') {
+          hoveredBlock.focus();
+          document.execCommand('insertOrderedList');
+       } else if (tag === 'todo') {
+          const selectionText = hoveredBlock.innerText.trim();
+          const todoHtml = `<div class="todo-item-container" style="display: flex; align-items: flex-start; gap: 0.75rem; margin: 0.5rem 0; width: 100%;"><div contenteditable="false" style="display: flex; align-items: center; padding-top: 0.2rem; user-select: none;"><input type="checkbox" style="appearance: none; -webkit-appearance: none; width: 1.15rem; height: 1.15rem; border: 2.5px solid hsl(var(--primary)); border-radius: 6px; cursor: pointer; transition: all 0.2s; background-color: transparent;" /></div><div contenteditable="true" style="flex: 1; outline: none; border: none; padding: 0; margin: 0; min-height: 1.2rem; color: inherit;">${selectionText || 'Nueva nota'}</div></div><p><br></p>`;
+          hoveredBlock.outerHTML = todoHtml;
+       } else {
+          const newEl = document.createElement(tag);
+          newEl.innerHTML = hoveredBlock.innerHTML;
+          newEl.className = hoveredBlock.className;
+          hoveredBlock.replaceWith(newEl);
+       }
+       
+       if (editorRef.current) setContent(editorRef.current.innerHTML);
+       setHandleVisible(false);
+       toast({ title: `Convertido a ${tag.toUpperCase()}` });
+    }
+  };
+
+  const colorActiveBlock = (color: string) => {
+    if (hoveredBlock) {
+      hoveredBlock.style.color = color;
+      if (editorRef.current) setContent(editorRef.current.innerHTML);
+      toast({ title: "Color aplicado" });
     }
   };
 
@@ -627,13 +759,13 @@ const Notebook = ({
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto custom-scrollbar" onClick={handleContainerClick}>
+      <div className="relative notebook-scroll-area overflow-y-auto max-h-[calc(100vh-140px)] custom-scrollbar" onClick={handleContainerClick}>
         <div 
-          onClick={handleContainerClick}
           className={cn(
-            "mx-auto pt-8 pb-32 px-12 min-h-full group/notebook relative text-left transition-all duration-500",
+            "mx-auto pt-8 pb-96 px-12 group/notebook relative text-left transition-all duration-500 min-h-[calc(100vh-200px)]",
             widthClass
           )}
+          onDoubleClick={handleMarginDoubleClick}
         >
           <div className="mb-8">
             <div className="flex flex-wrap items-center gap-2">
@@ -652,9 +784,46 @@ const Notebook = ({
             </div>
           </div>
 
-          <div className="relative">
+          <div className="relative block-handles-zone">
+            <div 
+              className={cn("block-handle-container", handleVisible && "visible")}
+              style={{ top: handlePos.top, left: handlePos.left }}
+              onMouseEnter={() => setHandleVisible(true)}
+              onMouseLeave={() => setHandleVisible(false)}
+            >
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button 
+                    className="block-handle-grip"
+                    draggable
+                    onDragStart={(e) => {
+                      if (hoveredBlock) {
+                        e.dataTransfer.setData('text/plain', hoveredBlock.id);
+                        hoveredBlock.classList.add('opacity-50');
+                      }
+                    }}
+                    onDragEnd={() => {
+                      if (hoveredBlock) hoveredBlock.classList.remove('opacity-50');
+                    }}
+                  >
+                    <GripVertical size={16} />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent side="right" align="start" className="p-0 border-none bg-transparent shadow-none" sideOffset={10}>
+                  <BlockActionMenu 
+                    onDelete={deleteActiveBlock}
+                    onDuplicate={duplicateActiveBlock}
+                    onCopy={copyActiveBlock}
+                    onTurnInto={turnActiveBlockInto}
+                    onColor={colorActiveBlock}
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+
             <div
               ref={editorRef}
+              className="editor-content outline-none min-h-[500px]"
               contentEditable
               onInput={handleInput}
               onClick={handleEditorClick}
@@ -718,6 +887,35 @@ const Notebook = ({
                   }
                 } catch (e) {}
 
+
+                if (e.key === 'Backspace') {
+                  const selection = window.getSelection();
+                  if (selection?.isCollapsed) {
+                    const anchorNode = selection.anchorNode;
+                    const block = ((anchorNode?.nodeType === 3 ? anchorNode.parentElement : anchorNode) as HTMLElement | null)?.closest('.editor-content > *') as HTMLElement;
+                    
+                    if (block && editorRef.current?.contains(block)) {
+                      const text = block.innerText.trim();
+                      const isAtStart = selection.anchorOffset === 0;
+                      
+                      if (text === '' && isAtStart && editorRef.current.children.length > 1) {
+                        e.preventDefault();
+                        const prev = block.previousElementSibling as HTMLElement;
+                        block.remove();
+                        if (prev) {
+                          const range = document.createRange();
+                          range.selectNodeContents(prev);
+                          range.collapse(false);
+                          selection.removeAllRanges();
+                          selection.addRange(range);
+                          prev.focus();
+                        }
+                        if (editorRef.current) setContent(editorRef.current.innerHTML);
+                        return;
+                      }
+                    }
+                  }
+                }
 
                 // Keyboard formatting shortcuts
                 const isMac = typeof navigator !== 'undefined' && navigator.userAgent.includes("Mac");

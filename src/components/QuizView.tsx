@@ -27,7 +27,15 @@ import {
   SortDesc,
   Shuffle,
   AlertCircle,
-  Lock
+  Lock,
+  ListTodo,
+  ToggleLeft,
+  Type,
+  RectangleEllipsis,
+  BoxSelect,
+  HelpCircle,
+  ArrowRight,
+  GripVertical
 } from 'lucide-react';
 import { GenerateQuizOutput } from '@/ai/flows/generate-quiz-flow';
 import { Button } from '@/components/ui/button';
@@ -194,8 +202,12 @@ const QuizView = ({
   const [dynamicBlacklist, setDynamicBlacklist] = useState<string[]>([]);
   const [newBlacklistWord, setNewBlacklistWord] = useState('');
   const [showBlacklistPanel, setShowBlacklistPanel] = useState(false);
+  const [matchingShuffledRight, setMatchingShuffledRight] = useState<any[]>([]);
+  const [orderingShuffledItems, setOrderingShuffledItems] = useState<string[]>([]);
 
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isHintExpanded, setIsHintExpanded] = useState(false);
+  const [activePresetIndices, setActivePresetIndices] = useState<Set<number>>(new Set());
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [isFlipped, setIsFlipped] = useState(false);
   
@@ -206,10 +218,15 @@ const QuizView = ({
   const [sessionStartTime, setSessionStartTime] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [questionPresets, setQuestionPresets] = useState<QuestionPreset[]>([]);
+  const [editingPresetIndex, setEditingPresetIndex] = useState<number | null>(null);
   const [isSavePresetDialogOpen, setIsSavePresetDialogOpen] = useState(false);
   const [newPresetName, setNewPresetName] = useState('');
   const [isPresetPrivate, setIsPresetPrivate] = useState(false);
   const [compareMode, setCompareMode] = useState(false);
+  const [hintRevealed, setHintRevealed] = useState(false);
+  const [selectedLeftId, setSelectedLeftId] = useState<number | null>(null);
+  const [blockingChars, setBlockingChars] = useState<string[]>([]);
+  const [blockingSuccess, setBlockingSuccess] = useState(false);
 
   const bgAudioRef = useRef<HTMLAudioElement | null>(null);
   const questionAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -237,6 +254,21 @@ const QuizView = ({
     variants: [],
     variantSelectionMode: 'random_1'
   });
+
+  useEffect(() => {
+    const currentQuestion = sessionQuestions[currentQuestionIndex];
+    if (currentQuestion?.type === 'blocking') {
+      const word = currentQuestion.correctAnswer || '';
+      // Ensure we don't shuffle into the correct order
+      let shuffled = shuffleArray(word.split(''));
+      while (shuffled.join('') === word && word.length > 1) {
+        shuffled = shuffleArray(word.split(''));
+      }
+      setBlockingChars(shuffled);
+      setBlockingSuccess(false);
+      setUserAnswers(prev => ({ ...prev, [currentQuestionIndex]: shuffled.join('') }));
+    }
+  }, [currentQuestionIndex, sessionQuestions]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -390,19 +422,19 @@ const QuizView = ({
         });
 
         toast({
-          title: "Importación Inteligente",
+          title: "ImportaciÃ³n Inteligente",
           description: "Estructura de pregunta detectada y organizada.",
         });
         return;
       }
     } else if (editForm.type === 'fill_in_blank') {
-      const firstMarkerIndex = cleaned.indexOf('__1 ');
+      const firstMarkerIndex = cleaned.indexOf('1) ');
       if (firstMarkerIndex !== -1) {
         const questionText = cleaned.substring(0, firstMarkerIndex).trim();
         const answersPart = cleaned.substring(firstMarkerIndex);
         
         const answers: string[] = [];
-        const answerRegex = /__(\d+)\s+([^]*?)(?=\n\s*__\d+|$)/gi;
+        const answerRegex = /(\d+)\)\s+([^]*?)(?=\n\s*\d+\)|$)/gi;
         let answerMatch;
         while ((answerMatch = answerRegex.exec(answersPart)) !== null) {
           const index = parseInt(answerMatch[1], 10) - 1;
@@ -418,8 +450,8 @@ const QuizView = ({
             acceptableAnswers: answers
           });
           toast({
-            title: "Importación Inteligente",
-            description: `${answers.length} respuestas organizadas automáticamente.`,
+            title: "ImportaciÃ³n Inteligente",
+            description: `${answers.length} respuestas organizadas automÃ¡ticamente.`,
           });
           return;
         }
@@ -466,7 +498,7 @@ const QuizView = ({
     const blobUrl = URL.createObjectURL(file);
     setCustomMusicUrl(blobUrl);
     setCustomMusicName(file.name.replace(/\.[^.]+$/, ''));  // strip extension
-    toast({ title: '🎵 Track Loaded', description: `"${file.name}" added to loop.` });
+    toast({ title: 'ðŸŽµ Track Loaded', description: `"${file.name}" added to loop.` });
   };
 
   const handleDeleteCustomAudio = () => {
@@ -545,6 +577,22 @@ const QuizView = ({
     }
   }, [autoStart, quiz, isQuizStarted]);
 
+  useEffect(() => {
+    const currentQuestion = sessionQuestions[currentQuestionIndex];
+    if (currentQuestion?.type === 'matching' && currentQuestion.matchingPairs) {
+      setMatchingShuffledRight(shuffleArray(currentQuestion.matchingPairs));
+    }
+    if (currentQuestion?.type === 'ordering' && currentQuestion.orderingSteps) {
+      const shuffled = shuffleArray(currentQuestion.orderingSteps);
+      setOrderingShuffledItems(shuffled);
+      // Initialize answer with shuffled items to allow drag/drop reordering
+      if (!userAnswers[currentQuestionIndex]) {
+        setUserAnswers(prev => ({ ...prev, [currentQuestionIndex]: shuffled }));
+      }
+    }
+    setSelectedLeftId(null);
+  }, [currentQuestionIndex, sessionQuestions]);
+
   const handleStartErrorQuiz = () => {
     if (dayErrors.length === 0) return;
     
@@ -570,8 +618,8 @@ const QuizView = ({
     setShowErrorReview(false);
     
     toast({
-      title: "Sesión de Refuerzo",
-      description: `Repasando ${errorQuestions.length} fallos del día.`,
+      title: "SesiÃ³n de Refuerzo",
+      description: `Repasando ${errorQuestions.length} fallos del dÃ­a.`,
     });
   };
 
@@ -592,6 +640,7 @@ const QuizView = ({
     switch (q.type) {
       case 'multiple_choice':
       case 'true_false':
+      case 'blocking':
         return normalize(answer) === normalize(q.correctAnswer);
       case 'short_answer':
         const primaryMatch = normalize(answer) === normalize(q.correctAnswer);
@@ -605,7 +654,11 @@ const QuizView = ({
       case 'ordering':
         return JSON.stringify(answer) === JSON.stringify(q.orderingSteps);
       case 'matching':
-        return JSON.stringify(answer) === JSON.stringify(q.matchingPairs?.map((p: any) => p.match));
+        const userMatchesObj = (typeof answer === 'object' && answer !== null && !Array.isArray(answer)) ? answer : {};
+        if (Object.keys(userMatchesObj).length !== (q.matchingPairs?.length || 0)) return false;
+        return q.matchingPairs.every((p: any, i: number) => {
+          return userMatchesObj[i] === p.match;
+        });
       default:
         return false;
     }
@@ -661,6 +714,12 @@ const QuizView = ({
     
     if (!isCorrect(currentQuestion, answer) && !['flashcard', 'reveal'].includes(currentQuestion.type)) {
       const retryQuestion = { ...currentQuestion, isRetry: true };
+      
+      // Shuffle options for multiple choice retry
+      if (retryQuestion.type === 'multiple_choice' && retryQuestion.options) {
+        retryQuestion.options = shuffleArray(retryQuestion.options);
+      }
+
       const remainingCount = updatedQuestions.length - (currentQuestionIndex + 1);
       const insertIndex = remainingCount > 0 ? Math.floor(Math.random() * remainingCount) + currentQuestionIndex + 1 : updatedQuestions.length;
       updatedQuestions.splice(insertIndex, 0, retryQuestion);
@@ -675,6 +734,8 @@ const QuizView = ({
     setIsFlipped(false);
     setRevealedWords(0);
     setIsShowingPreview(false);
+    setHintRevealed(false);
+    setSelectedLeftId(null);
     
     if (currentQuestionIndex === (updatedQuestions.length - 1)) {
       setShowResults(true);
@@ -736,15 +797,16 @@ const QuizView = ({
 
   const getIconForType = (type: string) => {
     switch (type) {
-      case 'multiple_choice': return <CircleDot size={12} />;
-      case 'true_false': return <Target size={12} />;
-      case 'fill_in_blank': return <TextCursorInput size={12} />;
-      case 'short_answer': return <Pencil size={12} />;
-      case 'matching': return <ArrowRightLeft size={12} />;
-      case 'ordering': return <ListOrdered size={12} />;
-      case 'flashcard': return <Columns2 size={12} />;
-      case 'reveal': return <Eye size={12} />;
-      default: return <Plus size={12} />;
+      case 'multiple_choice': return <ListTodo size={14} />;
+      case 'true_false': return <ToggleLeft size={14} />;
+      case 'short_answer': return <Type size={14} />;
+      case 'fill_in_blank': return <RectangleEllipsis size={14} />;
+      case 'matching': return <Activity size={14} />;
+      case 'ordering': return <Layers size={14} />;
+      case 'flashcard': return <RotateCcw size={14} />;
+      case 'reveal': return <Eye size={14} />;
+      case 'blocking': return <BoxSelect size={14} />;
+      default: return <HelpCircle size={14} />;
     }
   };
 
@@ -821,19 +883,29 @@ const QuizView = ({
 
   const savePreset = () => {
     if (!newPresetName.trim() || selectedIndices.size === 0) return;
+    const sortedIndices = Array.from(selectedIndices).sort((a, b) => a - b);
     const newPreset: QuestionPreset = {
       name: newPresetName.trim().toUpperCase(),
-      indices: Array.from(selectedIndices),
+      indices: sortedIndices,
       isPrivate: isPresetPrivate,
       noteId: isPresetPrivate ? currentNoteId : undefined
     };
-    const updated = [...questionPresets, newPreset];
+
+    let updated;
+    if (editingPresetIndex !== null) {
+      updated = [...questionPresets];
+      updated[editingPresetIndex] = newPreset;
+    } else {
+      updated = [...questionPresets, newPreset];
+    }
+    
     setQuestionPresets(updated);
     localStorage.setItem('luvia_quiz_presets', JSON.stringify(updated));
     setNewPresetName('');
     setIsPresetPrivate(false);
+    setEditingPresetIndex(null);
     setIsSavePresetDialogOpen(false);
-    toast({ title: isPresetPrivate ? "Selección Individual Guardada" : "Selección Global Guardada", description: `Se ha guardado el preset: ${newPreset.name}` });
+    toast({ title: isPresetPrivate ? "SelecciÃ³n Individual Guardada" : "SelecciÃ³n Global Guardada", description: `Se ha guardado el preset: ${newPreset.name}` });
   };
 
   const deletePreset = (index: number) => {
@@ -844,21 +916,26 @@ const QuizView = ({
   };
 
   const applyPreset = (indices: number[]) => {
-    const currentArr = Array.from(selectedIndices).sort();
-    const targetArr = [...indices].sort();
-    
-    if (JSON.stringify(currentArr) === JSON.stringify(targetArr)) {
-      setSelectedIndices(new Set());
-      toast({ title: "Selección Limpiada" });
-    } else {
-      setSelectedIndices(new Set(indices));
-      toast({ title: "Preset Aplicado", description: `${indices.length} preguntas seleccionadas.` });
-    }
+    setSelectedIndices(prev => {
+      const next = new Set(prev);
+      const allIncluded = indices.every(idx => next.has(idx));
+      
+      if (allIncluded) {
+        // Toggle off if everything in the preset is already selected
+        indices.forEach(idx => next.delete(idx));
+        toast({ title: "SelecciÃ³n Removida" });
+      } else {
+        // Add indices (additive)
+        indices.forEach(idx => next.add(idx));
+        toast({ title: "Preset AÃ±adido", description: `${indices.length} preguntas aÃ±adidas.` });
+      }
+      return next;
+    });
   };
 
   const detectedBlanksCount = useMemo(() => {
     if (editForm.type !== 'fill_in_blank') return 0;
-    return (editForm.question.match(/__BLANK__/g) || []).length;
+    return (editForm.question.match(/\(BLACK\)/g) || []).length;
   }, [editForm.question, editForm.type]);
 
   const toggleQuestionAudio = () => {
@@ -889,7 +966,7 @@ const QuizView = ({
             <div className="h-6 w-px bg-white/5" />
             <h2 className="text-xl font-black italic tracking-tighter uppercase text-white flex items-center gap-3">
               <AlertCircle size={20} className="text-destructive" />
-              REVISIÓN DE ERRORES DEL DÍA
+              REVISIÃ“N DE ERRORES DEL DÃA
             </h2>
           </div>
           <Button 
@@ -908,8 +985,8 @@ const QuizView = ({
                   <CheckCircle size={48} />
                 </div>
                 <div>
-                  <h3 className="text-2xl font-black uppercase italic tracking-tighter text-white">¡IMPECABLE!</h3>
-                  <p className="text-white/40 font-medium italic mt-2">No has cometido errores hoy. Tu precisión es absoluta.</p>
+                  <h3 className="text-2xl font-black uppercase italic tracking-tighter text-white">Â¡IMPECABLE!</h3>
+                  <p className="text-white/40 font-medium italic mt-2">No has cometido errores hoy. Tu precisiÃ³n es absoluta.</p>
                 </div>
                 <Button onClick={() => { setShowErrorReview(false); setIsQuizStarted(false); }} className="bg-primary px-8 h-12 rounded-xl font-black uppercase italic tracking-widest text-xs">VOLVER AL INICIO</Button>
               </div>
@@ -950,7 +1027,7 @@ const QuizView = ({
 
                     {error.question.explanation && (
                       <div className="pt-4 border-t border-white/5">
-                        <p className="text-[9px] font-black uppercase tracking-widest text-primary/60 italic mb-2">EXPLICACIÓN COGNITIVA:</p>
+                        <p className="text-[9px] font-black uppercase tracking-widest text-primary/60 italic mb-2">EXPLICACIÃ“N COGNITIVA:</p>
                         <p className="text-sm text-white/50 leading-relaxed italic">{error.question.explanation}</p>
                       </div>
                     )}
@@ -1125,6 +1202,33 @@ const QuizView = ({
 
               <Card className="bg-[#111]/50 backdrop-blur-3xl border-white/5 rounded-[2rem] overflow-hidden shadow-2xl border-2">
                 <CardContent className="p-10">
+                  {/* NEED HINT BUTTON */}
+                  {!hasVerified && currentQuestion.hint && !['flashcard', 'reveal'].includes(currentQuestion.type) && (
+                    <div className="flex justify-end mb-6">
+                      {hintRevealed ? (
+                        <div 
+                          onClick={() => setHintRevealed(false)}
+                          className="bg-primary/5 border border-primary/20 p-4 rounded-xl flex items-start gap-4 animate-in slide-in-from-right-4 duration-500 max-w-sm cursor-pointer hover:bg-primary/10 transition-colors"
+                        >
+                          <SparklesIcon size={18} className="text-primary shrink-0 mt-0.5" />
+                          <div className="text-left">
+                            <span className="text-[10px] font-black uppercase text-primary tracking-widest block mb-1">hint:</span>
+                            <p className="text-xs font-medium text-white/70 italic leading-relaxed">{currentQuestion.hint}</p>
+                          </div>
+                        </div>
+                      ) : (
+                        <Button 
+                          onClick={() => setHintRevealed(true)}
+                          variant="outline" 
+                          size="sm" 
+                          className="h-9 px-4 rounded-lg bg-primary/5 border-primary/20 text-primary hover:bg-primary/20 font-black text-[9px] uppercase italic tracking-widest gap-2"
+                        >
+                          <AlertCircle size={14} /> Need a hint?
+                        </Button>
+                      )}
+                    </div>
+                  )}
+
                   {currentQuestion.type === 'flashcard' ? (
                     <div className="perspective-1000 min-h-[300px] cursor-pointer" onClick={() => setIsFlipped(!isFlipped)}>
                       <div className={cn("relative w-full h-full transition-transform duration-700 preserve-3d text-center py-16", isFlipped && "rotate-y-180")}>
@@ -1273,7 +1377,7 @@ const QuizView = ({
                       {currentQuestion.type === 'fill_in_blank' && (
                         <div className="text-left space-y-8">
                           <div className="text-xl font-black leading-relaxed tracking-tighter uppercase italic flex flex-wrap items-baseline gap-x-3 gap-y-4 text-white/80">
-                            {currentQuestion.question?.split('__BLANK__').map((part: string, i: number, arr: string[]) => {
+                            {currentQuestion.question?.split('(BLACK)').map((part: string, i: number, arr: string[]) => {
                               const answers = userAnswers[currentQuestionIndex] || [];
                               return (
                                 <React.Fragment key={i}>
@@ -1328,83 +1432,338 @@ const QuizView = ({
                       )}
 
                       {currentQuestion.type === 'matching' && (
-                        <div className="grid grid-cols-2 gap-12 relative py-8">
-                          <div className="space-y-4">
-                            {currentQuestion.matchingPairs?.map((pair: any, i: number) => (
-                              <div key={i} className="flex items-center gap-4">
-                                <div className="w-8 h-8 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center font-black text-xs text-white/20 italic">{i + 1}</div>
-                                <div className="flex-1 p-4 bg-white/[0.02] border-2 border-primary/20 rounded-xl font-black text-xs uppercase tracking-tight text-white/80">{pair.prompt}</div>
-                              </div>
-                            ))}
+                        <div className="space-y-8 py-4">
+                          <p className="text-center text-white/40 text-[10px] font-bold uppercase tracking-widest italic mb-2">Click an item on the left, then click its match on the right</p>
+                          <div className="grid grid-cols-2 gap-6 relative items-start">
+                            {/* Left Column (Static) */}
+                            <div className="space-y-3">
+                              {currentQuestion.matchingPairs?.map((pair: any, i: number) => {
+                                const currentAnswers = userAnswers[currentQuestionIndex] || {};
+                                const isMatched = currentAnswers[i] !== undefined;
+                                const isSelected = selectedLeftId === i;
+                                const matchValue = currentAnswers[i];
+                                const matchIdxInShuffled = matchingShuffledRight.findIndex(p => p.match === matchValue);
+                                
+                                return (
+                                  <button 
+                                    key={`left-${i}`}
+                                    disabled={hasVerified}
+                                    onClick={() => {
+                                      if (isSelected) setSelectedLeftId(null);
+                                      else setSelectedLeftId(i);
+                                      
+                                      // If already matched, unmatch on click
+                                      if (isMatched && !hasVerified) {
+                                        const next = { ...currentAnswers };
+                                        delete next[i];
+                                        setUserAnswers({ ...userAnswers, [currentQuestionIndex]: next });
+                                      }
+                                    }}
+                                    className={cn(
+                                      "w-full text-left p-4 rounded-[1.2rem] border-2 transition-all flex items-center justify-between min-h-[60px]",
+                                      isSelected ? "border-primary bg-primary/10 shadow-[0_0_15px_rgba(var(--primary),0.3)]" : 
+                                      isMatched 
+                                        ? (hasVerified 
+                                            ? (currentAnswers[i] === pair.match ? "border-green-500 bg-green-500/10 text-green-500" : "border-destructive bg-destructive/10 text-destructive")
+                                            : "border-primary/40 bg-primary/5")
+                                        : "border-white/5 bg-white/[0.02] hover:border-white/10"
+                                    )}
+                                  >
+                                    <div className="flex items-center gap-4">
+                                      {isMatched && (
+                                        <div className={cn("w-6 h-6 rounded-lg flex items-center justify-center font-black text-[10px] italic border bg-primary text-primary-foreground border-transparent")}>
+                                          {i + 1}
+                                        </div>
+                                      )}
+                                      <span className="font-black text-[11px] uppercase tracking-tight">{pair.prompt}</span>
+                                    </div>
+                                  </button>
+                                );
+                              })}
+                            </div>
+
+                            {/* Right Column (Definitions - Shuffled once) */}
+                            <div className="space-y-3">
+                              {matchingShuffledRight.map((pair: any, idx: number) => {
+                                const currentAnswers = userAnswers[currentQuestionIndex] || {};
+                                // Find which left item matched this right item
+                                const matchedLeftEntry = Object.entries(currentAnswers).find(([_, val]) => val === pair.match);
+                                const matchedLeftIdx = matchedLeftEntry ? parseInt(matchedLeftEntry[0]) : null;
+                                const isUsed = matchedLeftIdx !== null;
+                                
+                                return (
+                                  <button 
+                                    key={`right-${idx}`}
+                                    disabled={hasVerified}
+                                    onClick={() => {
+                                      if (hasVerified) return;
+                                      
+                                      if (isUsed) {
+                                        // Unmatch
+                                        const next = { ...currentAnswers };
+                                        delete next[matchedLeftIdx!];
+                                        setUserAnswers({ ...userAnswers, [currentQuestionIndex]: next });
+                                      } else if (selectedLeftId !== null) {
+                                        // Match current selection
+                                        const next = { ...currentAnswers, [selectedLeftId]: pair.match };
+                                        setUserAnswers({ ...userAnswers, [currentQuestionIndex]: next });
+                                        setSelectedLeftId(null);
+                                      }
+                                    }}
+                                    className={cn(
+                                      "w-full text-left p-4 rounded-[1.2rem] border-2 transition-all flex items-center justify-between min-h-[60px]",
+                                      isUsed 
+                                        ? (hasVerified 
+                                            ? (currentQuestion.matchingPairs[matchedLeftIdx!].match === pair.match ? "border-green-500 bg-green-500/10 text-green-500" : "border-destructive bg-destructive/10 text-destructive")
+                                            : "border-primary/40 bg-primary/5")
+                                        : (selectedLeftId !== null ? "border-primary/20 bg-primary/[0.02] hover:border-primary/50" : "border-white/5 bg-white/[0.01]")
+                                    )}
+                                  >
+                                    <div className="flex items-center gap-4">
+                                      {isUsed && (
+                                        <div className={cn("w-6 h-6 rounded-lg flex items-center justify-center font-black text-[10px] italic border bg-primary text-primary-foreground border-transparent")}>
+                                          {matchedLeftIdx! + 1}
+                                        </div>
+                                      )}
+                                      <span className="font-black text-[11px] uppercase tracking-tight">{pair.match}</span>
+                                    </div>
+                                  </button>
+                                );
+                              })}
+                            </div>
                           </div>
-                          <div className="space-y-4">
-                            {currentQuestion.matchingPairs?.map((pair: any, i: number) => (
-                              <div key={i} className="flex items-center gap-4">
-                                <Select 
-                                  disabled={hasVerified}
-                                  value={userAnswers[currentQuestionIndex]?.[i] || ''}
-                                  onValueChange={(val) => {
-                                    const next = [...(userAnswers[currentQuestionIndex] || [])];
-                                    next[i] = val;
-                                    setUserAnswers({ ...userAnswers, [currentQuestionIndex]: next });
-                                  }}
-                                >
-                                  <SelectTrigger className={cn(
-                                    "flex-1 h-12 bg-white/[0.02] border-2 rounded-xl px-4 font-black text-xs uppercase italic tracking-tighter",
-                                    hasVerified && (userAnswers[currentQuestionIndex]?.[i] === pair.match ? "border-green-500 bg-green-500/10 text-green-500" : "border-destructive bg-destructive/10 text-destructive")
-                                  )}>
-                                    <SelectValue placeholder="SELECT MATCH..." />
-                                  </SelectTrigger>
-                                  <SelectContent className="bg-background/95 backdrop-blur-xl border-2 border-white/10 rounded-xl">
-                                    {shuffleArray(currentQuestion.matchingPairs || []).map((p: any, idx: number) => (
-                                      <SelectItem key={idx} value={p.match} className="font-black text-[10px] uppercase italic p-3">{p.match}</SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                            ))}
+
+                          <div className="flex flex-col items-center pt-8">
+                             {!hasVerified ? (
+                               <Button 
+                                 onClick={handleVerify}
+                                 className="bg-primary hover:bg-primary/90 text-white font-black uppercase italic tracking-widest px-12 rounded-xl h-12 shadow-2xl active:scale-95 transition-all"
+                                 disabled={Object.keys(userAnswers[currentQuestionIndex] || {}).length < (currentQuestion.matchingPairs?.length || 0)}
+                               >
+                                 Check Answer
+                               </Button>
+                             ) : (
+                               <div className="w-full space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                 <div className="space-y-2">
+                                   <p className="text-[10px] font-black uppercase tracking-widest text-white/30 italic">Correct matches:</p>
+                                   <div className="grid gap-2">
+                                      {currentQuestion.matchingPairs?.map((pair: any, i: number) => (
+                                        <div key={`sol-${i}`} className="flex items-center gap-2 text-xs font-bold text-white/60">
+                                          <span>{pair.prompt}</span>
+                                          <ArrowRight size={12} className="text-primary/40" />
+                                          <span className="text-white">{pair.match}</span>
+                                        </div>
+                                      ))}
+                                   </div>
+                                 </div>
+                                 <Button 
+                                   onClick={handleNext}
+                                   className="w-full bg-primary hover:bg-primary/90 text-white font-black uppercase italic tracking-widest px-12 rounded-xl h-12 shadow-2xl active:scale-95 transition-all"
+                                 >
+                                   Continue
+                                 </Button>
+                               </div>
+                             )}
                           </div>
                         </div>
                       )}
 
                       {currentQuestion.type === 'ordering' && (
-                        <div className="space-y-4 max-w-2xl mx-auto py-8">
-                          {shuffleArray(currentQuestion.orderingSteps || []).map((step: string, i: number) => {
-                            const currentOrder = userAnswers[currentQuestionIndex] || [];
-                            const isSelected = currentOrder.includes(step);
-                            const orderIdx = currentOrder.indexOf(step);
-                            return (
-                              <button
-                                key={i}
-                                disabled={hasVerified || isSelected}
-                                onClick={() => {
-                                  const next = [...currentOrder, step];
-                                  setUserAnswers({ ...userAnswers, [currentQuestionIndex]: next });
-                                }}
-                                className={cn(
-                                  "w-full p-4 rounded-xl border-2 transition-all flex items-center justify-between",
-                                  isSelected 
-                                    ? "border-primary bg-primary/10 text-primary" 
-                                    : "border-white/5 bg-white/[0.02] text-white/60 hover:border-white/20"
-                                )}
+                        <div className="space-y-6 max-w-2xl mx-auto py-8">
+                          <p className="text-center text-white/40 text-[10px] font-bold uppercase tracking-widest italic mb-2">Drag items to reorder</p>
+                          <div className="space-y-3">
+                            {(userAnswers[currentQuestionIndex] || []).map((step: string, i: number) => {
+                              const isCorrectPos = hasVerified && step === currentQuestion.orderingSteps[i];
+                              
+                              return (
+                                <div
+                                  key={`order-${i}`}
+                                  draggable={!hasVerified}
+                                  onDragStart={(e) => {
+                                    if (hasVerified) return;
+                                    e.dataTransfer.setData('stepIndex', i.toString());
+                                  }}
+                                  onDragOver={(e) => e.preventDefault()}
+                                  onDrop={(e) => {
+                                    if (hasVerified) return;
+                                    e.preventDefault();
+                                    const sourceIdx = parseInt(e.dataTransfer.getData('stepIndex'));
+                                    const next = [...(userAnswers[currentQuestionIndex] || [])];
+                                    const temp = next[sourceIdx];
+                                    next[sourceIdx] = next[i];
+                                    next[i] = temp;
+                                    setUserAnswers({ ...userAnswers, [currentQuestionIndex]: next });
+                                  }}
+                                  className={cn(
+                                    "w-full p-4 rounded-[1.2rem] border-2 transition-all flex items-center gap-4 bg-white/[0.02] cursor-grab active:cursor-grabbing",
+                                    hasVerified 
+                                      ? (isCorrectPos ? "border-green-500 bg-green-500/10" : "border-destructive bg-destructive/10")
+                                      : "border-white/5 hover:border-white/20"
+                                  )}
+                                >
+                                  <div className="flex items-center gap-3">
+                                    <GripVertical size={14} className="text-white/20" />
+                                    <div className={cn("w-6 h-6 rounded-lg flex items-center justify-center font-black text-[10px] italic border", hasVerified ? (isCorrectPos ? "bg-green-500 text-white border-transparent" : "bg-destructive text-white border-transparent") : "bg-white/5 text-white/30 border-white/5")}>
+                                      {i + 1}
+                                    </div>
+                                  </div>
+                                  <span className="font-black text-xs uppercase italic tracking-tight flex-1 text-left">{step}</span>
+                                  {hasVerified && (
+                                    <div className="text-[10px] font-black uppercase text-white/20 tracking-widest">
+                                      #{currentQuestion.orderingSteps.indexOf(step) + 1}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+
+                          <div className="flex flex-col items-center pt-8">
+                            {!hasVerified ? (
+                              <Button 
+                                onClick={handleVerify}
+                                className="bg-primary hover:bg-primary/90 text-white font-black uppercase italic tracking-widest px-12 rounded-xl h-12 shadow-2xl active:scale-95 transition-all"
                               >
-                                <span className="font-black text-sm uppercase italic tracking-tight">{step}</span>
-                                {isSelected && (
-                                  <div className="w-6 h-6 rounded-lg bg-primary text-primary-foreground flex items-center justify-center font-black text-xs">{orderIdx + 1}</div>
-                                )}
-                              </button>
-                            );
-                          })}
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
-                            onClick={() => setUserAnswers({ ...userAnswers, [currentQuestionIndex]: [] })}
-                            className="w-full text-[10px] font-black uppercase tracking-widest text-white/20 hover:text-white"
-                          >
-                            <RotateCcw size={14} className="mr-2" /> RESET SEQUENCE
-                          </Button>
+                                Check Answer
+                              </Button>
+                            ) : (
+                               <div className="w-full space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                 <div className="space-y-3 bg-white/[0.02] border border-white/5 p-6 rounded-[1.5rem] text-left">
+                                   <p className="text-[10px] font-black uppercase tracking-widest text-white/30 italic">Correct order:</p>
+                                   <div className="space-y-1">
+                                      {currentQuestion.orderingSteps?.map((step: string, i: number) => (
+                                        <div key={`sol-${i}`} className="flex items-center gap-2 text-xs font-bold text-white/60">
+                                          <span className="text-primary/40 text-[9px] w-4">{i + 1}.</span>
+                                          <span>{step}</span>
+                                        </div>
+                                      ))}
+                                   </div>
+                                 </div>
+                                 <Button 
+                                   onClick={handleNext}
+                                   className="w-full bg-primary hover:bg-primary/90 text-white font-black uppercase italic tracking-widest px-12 rounded-xl h-12 shadow-2xl active:scale-95 transition-all"
+                                 >
+                                   Continue
+                                 </Button>
+                               </div>
+                            )}
+                          </div>
                         </div>
                       )}
+
+                      {currentQuestion.type === 'blocking' && (
+                        <div className="flex flex-col items-center space-y-12 py-10">
+                          <h2 className="text-xl font-black uppercase italic tracking-tighter text-white/30 tracking-[0.2em]">Deconstruct & Rebuild Sequence:</h2>
+                          
+                          <div className="flex flex-wrap justify-center gap-4 py-12 px-8 min-h-[180px] w-full bg-[#050505] rounded-[3rem] border-2 border-white/5 relative shadow-[inset_0_4px_40px_rgba(0,0,0,0.8)]">
+                            {blockingChars.map((char, i) => (
+                              <div
+                                key={`block-${i}`}
+                                draggable={!hasVerified && !blockingSuccess}
+                                onDragStart={(e) => {
+                                  e.dataTransfer.setData('sourceIndex', i.toString());
+                                }}
+                                onDragOver={(e) => e.preventDefault()}
+                                onDrop={(e) => {
+                                  e.preventDefault();
+                                  const sourceIndex = parseInt(e.dataTransfer.getData('sourceIndex'));
+                                  if (sourceIndex === i) return;
+
+                                  const nextChars = [...blockingChars];
+                                  const temp = nextChars[sourceIndex];
+                                  nextChars[sourceIndex] = nextChars[i];
+                                  nextChars[i] = temp;
+
+                                  setBlockingChars(nextChars);
+                                  setUserAnswers(prev => ({ ...prev, [currentQuestionIndex]: nextChars.join('') }));
+                                  
+                                  if (nextChars.join('').toLowerCase() === (currentQuestion.correctAnswer || '').toLowerCase()) {
+                                    setBlockingSuccess(true);
+                                    // playSFX('correct'); // Optional
+                                    setTimeout(() => handleVerify(), 800);
+                                  }
+                                }}
+                                className={cn(
+                                  "w-14 h-20 md:w-18 md:h-24 rounded-2xl border-2 flex items-center justify-center text-3xl font-black transition-all duration-300 cursor-grab active:cursor-grabbing select-none",
+                                  blockingSuccess || (hasVerified && blockingChars.join('').toLowerCase() === currentQuestion.correctAnswer?.toLowerCase())
+                                    ? "bg-emerald-500/10 border-emerald-500 text-emerald-500 shadow-[0_0_40px_rgba(16,185,129,0.4)] animate-in zoom-in-110"
+                                    : "bg-[#111] border-white/5 text-white/80 hover:border-primary/50 hover:shadow-[0_0_20px_rgba(var(--primary),0.3)] hover:scale-105"
+                                )}
+                              >
+                                {char.toUpperCase()}
+                              </div>
+                            ))}
+                          </div>
+
+                          <div className="flex flex-col items-center gap-8">
+                            {(blockingSuccess || hasVerified) && (
+                              <div className="animate-in zoom-in-75 duration-700 flex flex-col items-center gap-3">
+                                <div className="w-16 h-16 rounded-full bg-emerald-500/20 border-4 border-emerald-500 flex items-center justify-center shadow-[0_0_40px_rgba(16,185,129,0.4)]">
+                                  <Check size={32} className="text-emerald-500 stroke-[4]" />
+                                </div>
+                                <span className="text-[10px] font-black uppercase tracking-[0.4em] text-emerald-500 italic">NEURAL MATRIX SYNCED</span>
+                              </div>
+                            )}
+
+                            <Button 
+                              variant="outline" 
+                              onClick={() => {
+                                let word = currentQuestion.correctAnswer || '';
+                                let shuffled = shuffleArray(word.split(''));
+                                while (shuffled.join('') === word && word.length > 1) shuffled = shuffleArray(word.split(''));
+                                setBlockingChars(shuffled);
+                                setBlockingSuccess(false);
+                                setUserAnswers(prev => ({ ...prev, [currentQuestionIndex]: shuffled.join('') }));
+                              }}
+                              disabled={hasVerified || blockingSuccess}
+                              className="h-12 px-8 border-2 border-white/5 bg-white/5 text-white/20 hover:text-white hover:border-white/20 rounded-2xl gap-3 font-black text-[10px] uppercase tracking-[0.2em] italic group transition-all"
+                            >
+                              <RotateCcw size={14} className="group-hover:rotate-180 transition-transform duration-500" /> RESET DISPLACEMENT
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {/* FEEDBACK & EXPLANATION BLOCK */}
+                  {hasVerified && !['flashcard', 'reveal'].includes(currentQuestion.type) && (
+                    <div className="mt-10 animate-in slide-in-from-bottom-6 fade-in duration-700">
+                      <div className={cn(
+                        "p-8 rounded-[1.5rem] border-2 relative overflow-hidden",
+                        isCorrect(currentQuestion, userAnswers[currentQuestionIndex]) 
+                          ? "bg-green-500/5 border-green-500/20 shadow-[0_20px_40px_-15px_rgba(34,197,94,0.1)]" 
+                          : "bg-destructive/5 border-destructive/20 shadow-[0_20px_40px_-15px_rgba(239,68,68,0.1)]"
+                      )}>
+                        <div className="flex items-start gap-6 relative z-10">
+                          <div className={cn(
+                            "w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 border-2",
+                            isCorrect(currentQuestion, userAnswers[currentQuestionIndex]) 
+                              ? "bg-green-500/20 text-green-500 border-green-500/20" 
+                              : "bg-destructive/20 text-destructive border-destructive/20"
+                          )}>
+                            {isCorrect(currentQuestion, userAnswers[currentQuestionIndex]) ? <CheckCircle size={28} /> : <AlertTriangle size={28} />}
+                          </div>
+                          <div className="text-left space-y-2">
+                            <h4 className={cn(
+                              "text-xl font-black uppercase italic tracking-tighter",
+                              isCorrect(currentQuestion, userAnswers[currentQuestionIndex]) ? "text-green-500" : "text-destructive"
+                            )}>
+                              {isCorrect(currentQuestion, userAnswers[currentQuestionIndex]) ? "CORRECT PROTOCOL!" : "LEARN: NEURAL RECALIBRATION"}
+                            </h4>
+                            {currentQuestion.explanation ? (
+                              <p className="text-sm font-medium text-white/70 italic leading-relaxed max-w-2xl">{currentQuestion.explanation}</p>
+                            ) : (
+                              <p className="text-sm font-medium text-white/40 italic">No further data available for this session.</p>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Background decor */}
+                        <div className={cn(
+                          "absolute -right-4 -bottom-4 w-32 h-32 blur-3xl rounded-full opacity-10",
+                          isCorrect(currentQuestion, userAnswers[currentQuestionIndex]) ? "bg-green-500" : "bg-destructive"
+                        )} />
+                      </div>
                     </div>
                   )}
                 </CardContent>
@@ -1434,10 +1793,10 @@ const QuizView = ({
       const offset = circumference - (percentage / 100) * circumference;
 
       const getMotivationalMessage = (p: number) => {
-        if (p >= 90) return "¡Increíble dominio! Tu sincronización cognitiva es perfecta.";
-        if (p >= 70) return "Excelente desempeño. Estás consolidando los conceptos clave.";
-        if (p >= 50) return "Buen trabajo. Sigue practicando para alcanzar el 75% mañana.";
-        return `Tu consistencia está mejorando. Sigue practicando para alcanzar el ${Math.min(50, p + 20)}% mañana.`;
+        if (p >= 90) return "Â¡IncreÃ­ble dominio! Tu sincronizaciÃ³n cognitiva es perfecta.";
+        if (p >= 70) return "Excelente desempeÃ±o. EstÃ¡s consolidando los conceptos clave.";
+        if (p >= 50) return "Buen trabajo. Sigue practicando para alcanzar el 75% maÃ±ana.";
+        return `Tu consistencia estÃ¡ mejorando. Sigue practicando para alcanzar el ${Math.min(50, p + 20)}% maÃ±ana.`;
       };
 
       return (
@@ -1477,7 +1836,7 @@ const QuizView = ({
               <div className="glass-card p-8 flex flex-col items-center text-center">
                 <div className="mb-2">
                   <h2 className="text-sm font-semibold text-blue-400 uppercase tracking-widest">Resultado Final</h2>
-                  <h1 className="text-3xl font-bold mt-1 text-white">¡Buen trabajo!</h1>
+                  <h1 className="text-3xl font-bold mt-1 text-white">Â¡Buen trabajo!</h1>
                 </div>
 
                 <div className="relative flex items-center justify-center my-8">
@@ -1496,7 +1855,7 @@ const QuizView = ({
                   </svg>
                   <div className="absolute inset-0 flex flex-col items-center justify-center">
                     <span className="text-5xl font-bold text-white">{percentage}<span className="text-2xl text-blue-400">%</span></span>
-                    <span className="text-xs text-gray-500 font-medium uppercase tracking-widest">PRECISIÓN</span>
+                    <span className="text-xs text-gray-500 font-medium uppercase tracking-widest">PRECISIÃ“N</span>
                   </div>
                 </div>
 
@@ -1513,7 +1872,7 @@ const QuizView = ({
                     </div>
                     <div>
                       <p className="text-xs text-gray-500 font-bold uppercase tracking-tight">Tu Racha</p>
-                      <p className="text-lg font-bold text-white">1 Día Activo</p>
+                      <p className="text-lg font-bold text-white">1 DÃ­a Activo</p>
                     </div>
                   </div>
                   <span className="bg-blue-500/10 text-blue-400 text-[10px] px-2 py-1 rounded-full font-bold uppercase tracking-tighter">NUEVA RACHA</span>
@@ -1540,7 +1899,7 @@ const QuizView = ({
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="glass-card p-6 flex flex-col justify-center">
-                  <p className="text-xs font-bold text-gray-500 uppercase mb-4 tracking-widest">Desempeño</p>
+                  <p className="text-xs font-bold text-gray-500 uppercase mb-4 tracking-widest">DesempeÃ±o</p>
                   <div className="space-y-4">
                     <div className="flex justify-between items-center">
                       <span className="text-gray-400 text-sm font-medium">Correctas</span>
@@ -1583,14 +1942,14 @@ const QuizView = ({
 
               <div className="mt-8 space-y-4">
                 <div className="flex items-center justify-center p-12 text-center text-gray-500 italic text-sm">
-                  Desliza hacia abajo para revisar tus fallos o comenzar una nueva lección.
+                  Desliza hacia abajo para revisar tus fallos o comenzar una nueva lecciÃ³n.
                 </div>
                 <div className="flex flex-col sm:flex-row gap-4">
                   <button 
                     onClick={() => { setIsQuizStarted(false); setShowResults(false); }}
                     className="flex-1 accent-gradient hover:opacity-90 py-4 px-6 rounded-2xl font-bold text-white shadow-lg transition-all transform hover:-translate-y-1"
                   >
-                    Siguiente Lección
+                    Siguiente LecciÃ³n
                   </button>
                   <button 
                     onClick={() => { setShowResults(false); setShowErrorReview(true); }}
@@ -1691,7 +2050,7 @@ const QuizView = ({
                 onClick={() => setIsSavePresetDialogOpen(true)}
                 className="h-7 px-3 bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20 rounded-lg text-[9px] font-black uppercase tracking-widest italic animate-in fade-in"
               >
-                <PlusCircle size={12} className="mr-1.5" /> Guardar Selección ({selectedIndices.size})
+                <PlusCircle size={12} className="mr-1.5" /> Guardar SelecciÃ³n ({selectedIndices.size})
               </Button>
             )}
           </div>
@@ -1708,7 +2067,7 @@ const QuizView = ({
                     onClick={() => applyPreset(preset.indices)}
                     className={cn(
                       "h-9 px-4 rounded-xl border flex items-center gap-2 transition-all hover:scale-105 active:scale-95",
-                      JSON.stringify(Array.from(selectedIndices).sort()) === JSON.stringify([...preset.indices].sort())
+                      preset.indices.every(idx => selectedIndices.has(idx)) && preset.indices.length > 0
                         ? "bg-primary border-primary text-white shadow-lg shadow-primary/20"
                         : "bg-white/5 border-white/5 text-white/40 hover:text-white hover:border-white/10"
                     )}
@@ -1717,12 +2076,26 @@ const QuizView = ({
                     <span className="text-[10px] font-black uppercase tracking-wider italic">{preset.name}</span>
                     <Badge className="bg-white/10 text-[9px] h-4 px-1.5 border-0 rounded-md italic">{preset.indices.length}</Badge>
                   </button>
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); deletePreset(pIdx); }}
-                    className="absolute -top-1 -right-1 w-4 h-4 bg-destructive text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:scale-110"
-                  >
-                    <X size={10} />
-                  </button>
+                  <div className="absolute -top-1 -right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button 
+                      onClick={(e) => { 
+                        e.stopPropagation(); 
+                        setEditingPresetIndex(pIdx);
+                        setNewPresetName(preset.name);
+                        setIsPresetPrivate(!!preset.isPrivate);
+                        setIsSavePresetDialogOpen(true);
+                      }}
+                      className="w-4 h-4 bg-primary text-white rounded-full flex items-center justify-center hover:scale-110"
+                    >
+                      <Pencil size={8} />
+                    </button>
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); deletePreset(pIdx); }}
+                      className="w-4 h-4 bg-destructive text-white rounded-full flex items-center justify-center hover:scale-110"
+                    >
+                      <X size={10} />
+                    </button>
+                  </div>
                 </div>
               ))
             )}
@@ -1732,7 +2105,7 @@ const QuizView = ({
         <Dialog open={isSavePresetDialogOpen} onOpenChange={setIsSavePresetDialogOpen}>
           <DialogContent className="bg-[#0f0f11] border-white/10 rounded-[2rem] max-w-sm">
             <DialogHeader>
-              <DialogTitle className="text-xl font-black italic uppercase italic tracking-tighter text-white">Nombre de la Selección</DialogTitle>
+              <DialogTitle className="text-xl font-black italic uppercase italic tracking-tighter text-white">Nombre de la SelecciÃ³n</DialogTitle>
             </DialogHeader>
             <div className="py-4 space-y-4">
               <div className="space-y-2">
@@ -1832,7 +2205,7 @@ const QuizView = ({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="bg-background/95 backdrop-blur-xl border-2 border-white/10 rounded-xl">
-                    {['multiple_choice', 'true_false', 'short_answer', 'fill_in_blank', 'matching', 'ordering', 'flashcard', 'reveal'].map(type => (
+                    {['multiple_choice', 'true_false', 'short_answer', 'fill_in_blank', 'matching', 'ordering', 'flashcard', 'reveal', 'blocking'].map(type => (
                       <SelectItem key={type} value={type} className="font-black text-[9px] uppercase italic text-white/60 p-2.5">
                         <div className="flex items-center gap-2">{getIconForType(type)}<span>{type.replace(/_/g, ' ')}</span></div>
                       </SelectItem>
@@ -1978,7 +2351,7 @@ const QuizView = ({
                             onChange={(e) => { 
                               const next = [...editForm.options]; 
                               const oldVal = next[i];
-                              const cleaned = cleanText(e.target.value);
+                              const cleaned = e.target.value;
                               next[i] = cleaned; 
                               const updates: any = { options: next };
                               if (editForm.correctAnswer === oldVal) {
@@ -2019,7 +2392,7 @@ const QuizView = ({
               <div className="space-y-6">
                 <div className="space-y-4">
                   <Label className="text-sm font-bold text-white uppercase italic tracking-tight">Statement</Label>
-                  <Textarea value={editForm.question} onChange={(e) => setEditForm({...editForm, question: cleanText(e.target.value)})} className="min-h-[100px] bg-[#111] border-2 border-white/5 focus:border-primary/50 rounded-xl p-4 text-sm font-medium" />
+                  <Textarea value={editForm.question} onChange={(e) => setEditForm({...editForm, question: e.target.value})} className="min-h-[100px] bg-[#111] border-2 border-white/5 focus:border-primary/50 rounded-xl p-4 text-sm font-medium" />
                 </div>
                 <div className="space-y-4">
                   <Label className="text-sm font-bold text-white uppercase italic tracking-tight">Correct Answer</Label>
@@ -2046,15 +2419,15 @@ const QuizView = ({
               <div className="space-y-6">
                 <div className="space-y-4">
                   <Label className="text-sm font-bold text-white uppercase italic tracking-tight">Question</Label>
-                  <Textarea value={editForm.question} onChange={(e) => setEditForm({...editForm, question: cleanText(e.target.value)})} className="min-h-[100px] bg-[#111] border-2 border-white/5 focus:border-primary/50 rounded-xl p-4 text-sm font-medium" />
+                  <Textarea value={editForm.question} onChange={(e) => setEditForm({...editForm, question: e.target.value})} className="min-h-[100px] bg-[#111] border-2 border-white/5 focus:border-primary/50 rounded-xl p-4 text-sm font-medium" />
                 </div>
                 <div className="space-y-4">
                   <Label className="text-sm font-bold text-white uppercase italic tracking-tight">Correct Answer & Variations</Label>
                   <div className="space-y-3">
-                    <Input value={editForm.correctAnswer} onChange={(e) => setEditForm({...editForm, correctAnswer: cleanText(e.target.value)})} placeholder="PRIMARY ANSWER..." className="h-11 bg-[#111] border-2 border-white/5 rounded-xl px-4 font-black text-[10px] uppercase italic" />
+                    <Input value={editForm.correctAnswer} onChange={(e) => setEditForm({...editForm, correctAnswer: e.target.value})} placeholder="PRIMARY ANSWER..." className="h-11 bg-[#111] border-2 border-white/5 rounded-xl px-4 font-black text-[10px] uppercase italic" />
                     {(editForm.acceptableAnswers || []).map((alt: string, i: number) => (
                       <div key={i} className="flex gap-2">
-                        <Input value={alt} onChange={(e) => { const next = [...editForm.acceptableAnswers]; next[i] = cleanText(e.target.value); setEditForm({...editForm, acceptableAnswers: next}); }} className="h-11 bg-[#111] border-2 border-white/5 rounded-xl px-4 font-black text-[10px] uppercase italic flex-1" />
+                        <Input value={alt} onChange={(e) => { const next = [...editForm.acceptableAnswers]; next[i] = e.target.value; setEditForm({...editForm, acceptableAnswers: next}); }} className="h-11 bg-[#111] border-2 border-white/5 rounded-xl px-4 font-black text-[10px] uppercase italic flex-1" />
                         <button onClick={() => setEditForm({...editForm, acceptableAnswers: editForm.acceptableAnswers.filter((_:any,idx:number)=>idx!==i)})} className="p-2 text-white/10 hover:text-destructive"><Trash2 size={14} /></button>
                       </div>
                     ))}
@@ -2074,10 +2447,10 @@ const QuizView = ({
                   <div className="flex flex-col gap-1">
                     <Label className="text-sm font-bold text-white uppercase italic tracking-tight">Text with Blanks</Label>
                     <div className="flex items-center gap-2 text-[9px] text-white/40 font-bold uppercase tracking-tight italic">
-                      Use <Badge variant="secondary" className="cursor-pointer hover:bg-primary/20 hover:text-primary transition-all text-[8px] font-black py-0.5 px-2 bg-white/5 text-white/60 border-white/10" onClick={() => { navigator.clipboard.writeText('__BLANK__'); toast({ title: "COPIED" }); }}>__BLANK__</Badge> for blanks
+                      Use <Badge variant="secondary" className="cursor-pointer hover:bg-primary/20 hover:text-primary transition-all text-[8px] font-black py-0.5 px-2 bg-white/5 text-white/60 border-white/10" onClick={() => { navigator.clipboard.writeText('(BLACK)'); toast({ title: "COPIED" }); }}>(BLACK)</Badge> for blanks
                     </div>
                   </div>
-                  <Textarea value={editForm.question} onChange={(e) => handleQuestionChange(e.target.value)} placeholder="The capital of France is __BLANK__." className="min-h-[120px] bg-[#111] border-2 border-white/5 focus:border-primary/50 rounded-xl p-4 text-sm font-medium" />
+                  <Textarea value={editForm.question} onChange={(e) => handleQuestionChange(e.target.value)} placeholder="The capital of France is (BLACK)." className="min-h-[120px] bg-[#111] border-2 border-white/5 focus:border-primary/50 rounded-xl p-4 text-sm font-medium" />
                 </div>
                 <div className="space-y-4">
                   <Label className="text-sm font-bold text-white uppercase italic tracking-tight">Blank Answers</Label>
@@ -2086,7 +2459,7 @@ const QuizView = ({
                       Array.from({ length: detectedBlanksCount }).map((_, i) => (
                         <div key={i} className="flex items-center gap-4 group">
                           <div className="w-8 h-8 rounded-lg bg-white/5 border border-white/5 flex items-center justify-center font-black text-[10px] text-white/20 italic">{i + 1}</div>
-                          <Input value={editForm.acceptableAnswers?.[i] || ''} onChange={(e) => { const next = [...(editForm.acceptableAnswers || [])]; next[i] = cleanText(e.target.value); setEditForm({...editForm, acceptableAnswers: next}); }} placeholder={`ANSWER FOR BLANK ${i + 1}...`} className="h-11 bg-[#111] border-2 border-white/5 focus:border-primary/50 rounded-xl px-4 font-black text-[10px] uppercase italic" />
+                          <Input value={editForm.acceptableAnswers?.[i] || ''} onChange={(e) => { const next = [...(editForm.acceptableAnswers || [])]; next[i] = e.target.value; setEditForm({...editForm, acceptableAnswers: next}); }} placeholder={`ANSWER FOR BLANK ${i + 1}...`} className="h-11 bg-[#111] border-2 border-white/5 focus:border-primary/50 rounded-xl px-4 font-black text-[10px] uppercase italic" />
                         </div>
                       ))
                     ) : (
@@ -2101,11 +2474,11 @@ const QuizView = ({
               <div className="space-y-6">
                 <div className="space-y-4">
                   <Label className="text-sm font-bold text-white uppercase italic tracking-tight">Front (Concept)</Label>
-                  <Textarea value={editForm.front} onChange={(e) => setEditForm({...editForm, front: cleanText(e.target.value)})} className="min-h-[100px] bg-[#111] border-2 border-white/5 focus:border-primary/50 rounded-xl p-4 text-sm font-medium" />
+                  <Textarea value={editForm.front} onChange={(e) => setEditForm({...editForm, front: e.target.value})} className="min-h-[100px] bg-[#111] border-2 border-white/5 focus:border-primary/50 rounded-xl p-4 text-sm font-medium" />
                 </div>
                 <div className="space-y-4">
                   <Label className="text-sm font-bold text-white uppercase italic tracking-tight">Back (Definition)</Label>
-                  <Textarea value={editForm.back} onChange={(e) => setEditForm({...editForm, back: cleanText(e.target.value)})} className="min-h-[100px] bg-[#111] border-2 border-white/5 focus:border-primary/50 rounded-xl p-4 text-sm font-medium" />
+                  <Textarea value={editForm.back} onChange={(e) => setEditForm({...editForm, back: e.target.value})} className="min-h-[100px] bg-[#111] border-2 border-white/5 focus:border-primary/50 rounded-xl p-4 text-sm font-medium" />
                 </div>
               </div>
             )}
@@ -2115,7 +2488,7 @@ const QuizView = ({
                 <div className="grid grid-cols-2 gap-6">
                   <div className="space-y-4">
                     <Label className="text-sm font-bold text-white uppercase italic tracking-tight">Clue / Term</Label>
-                    <Input value={editForm.question} onChange={(e) => setEditForm({...editForm, question: cleanText(e.target.value)})} className="h-11 bg-[#111] border-2 border-white/5 focus:border-primary/50 rounded-xl px-4 font-medium" />
+                    <Input value={editForm.question} onChange={(e) => setEditForm({...editForm, question: e.target.value})} className="h-11 bg-[#111] border-2 border-white/5 focus:border-primary/50 rounded-xl px-4 font-medium" />
                   </div>
                   <div className="space-y-4">
                     <Label className="text-sm font-bold text-white uppercase italic tracking-tight">Preview Seconds</Label>
@@ -2124,7 +2497,7 @@ const QuizView = ({
                 </div>
                 <div className="space-y-4">
                   <Label className="text-sm font-bold text-white uppercase italic tracking-tight">Hidden Content</Label>
-                  <Textarea value={editForm.correctAnswer} onChange={(e) => setEditForm({...editForm, correctAnswer: cleanText(e.target.value)})} className="min-h-[100px] bg-[#111] border-2 border-white/5 focus:border-primary/50 rounded-xl p-4 text-sm font-medium" />
+                  <Textarea value={editForm.correctAnswer} onChange={(e) => setEditForm({...editForm, correctAnswer: e.target.value})} className="min-h-[100px] bg-[#111] border-2 border-white/5 focus:border-primary/50 rounded-xl p-4 text-sm font-medium" />
                 </div>
                 <div className="space-y-4">
                   <Label className="text-sm font-bold text-white uppercase italic tracking-tight">Audio Clue (Import from files)</Label>
@@ -2180,7 +2553,7 @@ const QuizView = ({
                           previewAudioRef.current = audio;
                           setIsPreviewPlaying(true);
                           audio.play().catch(e => {
-                            toast({ variant: "destructive", title: "Error de reproducción", description: "No se pudo reproducir el audio." });
+                            toast({ variant: "destructive", title: "Error de reproducciÃ³n", description: "No se pudo reproducir el audio." });
                             setIsPreviewPlaying(false);
                           });
                           audio.onended = () => setIsPreviewPlaying(false);
@@ -2206,54 +2579,72 @@ const QuizView = ({
             )}
 
             {editForm.type === 'matching' && (
-              <div className="space-y-6">
-                <div className="space-y-1">
-                  <h4 className="text-xl font-bold text-white uppercase italic tracking-tight">Matching Pairs</h4>
-                  <p className="text-sm text-white/60 italic">Connect terms on the left with their matches on the right</p>
+              <div className="space-y-8">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1">
+                    <h4 className="text-xl font-black uppercase italic tracking-tighter text-white">Matching Pairs</h4>
+                    <p className="text-[10px] text-white/30 font-black uppercase tracking-widest italic">Connect terms on the left with their matches on the right</p>
+                  </div>
                 </div>
                 
                 <div className="space-y-4">
-                  <div className="grid grid-cols-[1fr_32px_1fr_32px] gap-4 px-1">
-                    <Label className="text-xs font-black uppercase tracking-[0.2em] text-white/40 italic">Term</Label>
+                  <div className="grid grid-cols-[1fr_40px_1fr_40px] gap-4 px-2">
+                    <span className="text-[9px] font-black uppercase tracking-widest text-white/20 italic">Term (Left Column)</span>
                     <div />
-                    <Label className="text-xs font-black uppercase tracking-[0.2em] text-white/40 italic">Match</Label>
+                    <span className="text-[9px] font-black uppercase tracking-widest text-white/20 italic">Match (Right Column)</span>
                     <div />
                   </div>
 
                   <div className="space-y-3">
                     {editForm.matchingPairs.map((p: any, i: number) => (
-                      <div key={i} className="grid grid-cols-[1fr_32px_1fr_32px] gap-4 items-center group">
-                        <Input 
-                          value={p.prompt} 
-                          onChange={(e) => { 
-                            const next = [...editForm.matchingPairs]; 
-                            next[i].prompt = cleanText(e.target.value); 
-                            setEditForm({...editForm, matchingPairs: next}); 
-                          }} 
-                          placeholder={`Term ${i + 1}`} 
-                          className="h-12 bg-[#111] border-2 border-white/5 focus:border-primary/50 rounded-xl px-4 text-sm font-medium" 
-                        />
-                        <div className="flex justify-center text-white/20">
-                          <ArrowRightLeft size={16} />
+                      <div key={i} className="grid grid-cols-[1fr_40px_1fr_40px] gap-4 items-center group relative animate-in slide-in-from-left-2 duration-300">
+                        <div className="relative">
+                           <Input 
+                            value={p.prompt} 
+                            onChange={(e) => { 
+                              const next = [...editForm.matchingPairs]; 
+                              next[i].prompt = e.target.value; 
+                              setEditForm({...editForm, matchingPairs: next}); 
+                            }} 
+                            placeholder={`Concept ${i+1}`} 
+                            className="h-14 bg-white/[0.03] border-2 border-white/5 focus:border-primary/50 rounded-[1.2rem] px-5 text-sm font-black text-white italic tracking-tight" 
+                          />
                         </div>
-                        <Input 
-                          value={p.match} 
-                          onChange={(e) => { 
-                            const next = [...editForm.matchingPairs]; 
-                            next[i].match = cleanText(e.target.value); 
-                            setEditForm({...editForm, matchingPairs: next}); 
-                          }} 
-                          placeholder={`Definition ${i + 1}`} 
-                          className="h-12 bg-[#111] border-2 border-white/5 focus:border-primary/50 rounded-xl px-4 text-sm font-medium" 
-                        />
+                        
+                        <div className="flex items-center justify-center">
+                          <button
+                            onClick={() => {
+                              const next = [...editForm.matchingPairs];
+                              const temp = next[i].prompt;
+                              next[i].prompt = next[i].match;
+                              next[i].match = temp;
+                              setEditForm({...editForm, matchingPairs: next});
+                            }}
+                            className="w-8 h-8 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-white/20 hover:text-primary hover:border-primary/50 transition-all group/swap"
+                            title="Swap Sides"
+                          >
+                            <ArrowRightLeft size={12} className="group-hover/swap:rotate-180 transition-transform duration-500" />
+                          </button>
+                        </div>
+
+                        <div className="relative">
+                          <Input 
+                            value={p.match} 
+                            onChange={(e) => { 
+                              const next = [...editForm.matchingPairs]; 
+                              next[i].match = e.target.value; 
+                              setEditForm({...editForm, matchingPairs: next}); 
+                            }} 
+                            placeholder={`Definition ${i+1}`} 
+                            className="h-14 bg-white/[0.03] border-2 border-white/5 focus:border-primary/50 rounded-[1.2rem] px-5 text-sm font-black text-white italic tracking-tight" 
+                          />
+                        </div>
+
                         <button 
-                          onClick={() => {
-                            const next = editForm.matchingPairs.filter((_:any,idx:number)=>idx!==i);
-                            setEditForm({...editForm, matchingPairs: next});
-                          }}
-                          className="p-2 text-white/10 hover:text-destructive transition-colors opacity-0 group-hover:opacity-100"
+                          onClick={() => setEditForm({...editForm, matchingPairs: editForm.matchingPairs.filter((_:any,idx:number)=>idx!==i)})}
+                          className="flex items-center justify-center w-10 h-10 rounded-xl bg-destructive/10 text-destructive border border-destructive/20 opacity-0 group-hover:opacity-100 transition-all hover:bg-destructive shadow-lg"
                         >
-                          <X size={20} />
+                          <X size={18} />
                         </button>
                       </div>
                     ))}
@@ -2261,13 +2652,29 @@ const QuizView = ({
 
                   <button 
                     onClick={() => setEditForm({...editForm, matchingPairs: [...editForm.matchingPairs, {prompt:'', match:''}]})}
-                    className="w-full h-12 border-2 border-dashed border-primary/20 hover:border-primary/50 rounded-xl flex items-center justify-center gap-2 text-primary text-xs font-black uppercase italic tracking-widest transition-all hover:bg-primary/5"
+                    className="w-full h-14 border-2 border-dashed border-primary/20 hover:border-primary rounded-[1.2rem] bg-primary/5 hover:bg-primary/10 transition-all flex items-center justify-center gap-2 group"
                   >
-                    <Plus size={16} /> Add pair
+                    <Plus size={20} className="text-primary group-hover:scale-125 transition-transform" />
+                    <span className="font-black text-[11px] uppercase italic tracking-widest text-primary">Add New Correlation Pair</span>
                   </button>
                 </div>
               </div>
             )}
+
+            {editForm.type === 'blocking' && (
+              <div className="space-y-6">
+                <div className="space-y-4 text-left">
+                  <Label className="text-sm font-bold text-white uppercase italic tracking-tight">Clue / Theme</Label>
+                  <Textarea value={editForm.question} onChange={(e) => setEditForm({...editForm, question: e.target.value})} placeholder="What the user needs to reconstruct (e.g. 'Photosynthesis')" className="min-h-[100px] bg-[#111] border-2 border-white/5 focus:border-primary/50 rounded-xl p-4 text-sm font-medium" />
+                </div>
+                <div className="space-y-4 text-left">
+                  <Label className="text-sm font-bold text-white uppercase italic tracking-tight">Correct Sequence (The Word)</Label>
+                  <Input value={editForm.correctAnswer} onChange={(e) => setEditForm({...editForm, correctAnswer: e.target.value})} placeholder="THE WORD..." className="h-11 bg-[#111] border-2 border-white/5 focus:border-primary/50 rounded-xl px-4 font-black text-[10px] uppercase italic" />
+                </div>
+              </div>
+            )}
+
+
 
             {editForm.type === 'ordering' && (
               <div className="space-y-8">
@@ -2275,7 +2682,7 @@ const QuizView = ({
                   <Label className="text-sm font-bold text-white uppercase italic tracking-tight">Question</Label>
                   <Textarea 
                     value={editForm.question} 
-                    onChange={(e) => setEditForm({...editForm, question: cleanText(e.target.value)})} 
+                    onChange={(e) => setEditForm({...editForm, question: e.target.value})} 
                     placeholder="What do you want to ask?"
                     className="min-h-[100px] bg-[#111] border-2 border-white/5 rounded-xl p-4 text-sm font-medium focus:border-primary/50" 
                   />
@@ -2319,7 +2726,7 @@ const QuizView = ({
                             value={step} 
                             onChange={(e) => { 
                               const next = [...editForm.orderingSteps]; 
-                              next[i] = cleanText(e.target.value); 
+                              next[i] = e.target.value; 
                               setEditForm({...editForm, orderingSteps: next}); 
                             }} 
                             placeholder={`Item ${i + 1}`}
@@ -2350,6 +2757,46 @@ const QuizView = ({
                 </div>
               </div>
             )}
+            {/* HINT & EXPLANATION SECTION - INLINE ACCORDION */}
+            <div className="pt-6 mt-6 border-t border-white/5 space-y-4">
+              <Button 
+                variant="outline" 
+                onClick={() => setIsHintExpanded(!isHintExpanded)}
+                className={cn(
+                  "w-full h-11 bg-white/[0.02] border-2 rounded-xl flex items-center justify-between px-4 transition-all group",
+                  isHintExpanded ? "border-primary/40 bg-primary/5" : "border-white/5 hover:bg-white/5"
+                )}
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-[10px] font-black uppercase italic tracking-widest text-white/80">Hint & Explanation</span>
+                </div>
+                <ChevronDown size={14} className={cn("text-white/20 transition-transform", isHintExpanded && "rotate-180")} />
+              </Button>
+              
+              {isHintExpanded && (
+                <div className="space-y-6 p-6 bg-[#0d0d0f]/50 rounded-[1.5rem] border border-white/5 animate-in slide-in-from-top-2 duration-300">
+                  <div className="space-y-2 text-left">
+                    <Label className="text-[9px] font-black uppercase tracking-[0.3em] text-white/30 italic">Hint (Shown before answering)</Label>
+                    <Textarea 
+                      value={editForm.hint || ''} 
+                      onChange={(e) => setEditForm({...editForm, hint: e.target.value})}
+                      placeholder="A subtle clue to help remember..."
+                      className="bg-white/[0.03] border-2 border-white/5 rounded-xl min-h-[80px] text-sm text-white focus:ring-1 focus:ring-primary/50"
+                    />
+                  </div>
+                  <div className="space-y-2 text-left">
+                    <Label className="text-[9px] font-black uppercase tracking-[0.3em] text-white/30 italic">Explanation (Shown after answering)</Label>
+                    <Textarea 
+                      value={editForm.explanation || ''} 
+                      onChange={(e) => setEditForm({...editForm, explanation: e.target.value})}
+                      placeholder="Why this answer is correct..."
+                      className="bg-white/[0.03] border-2 border-white/5 rounded-xl min-h-[80px] text-sm text-white focus:ring-1 focus:ring-primary/50"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* VARIANTS SECTION */}
             <div className="pt-8 border-t border-white/5 space-y-6">
               <div className="flex items-center justify-between">
@@ -2359,7 +2806,16 @@ const QuizView = ({
                 </div>
                 <Button 
                   onClick={() => {
-                    const newVariant = { ...editForm, variants: [] };
+                    const newVariant = { 
+                      ...editForm, 
+                      question: '', 
+                      correctAnswer: '', 
+                      options: editForm.type === 'multiple_choice' ? ['', '', '', ''] : [],
+                      front: '',
+                      back: '',
+                      acceptableAnswers: [],
+                      variants: [] 
+                    };
                     delete (newVariant as any).variants;
                     setEditForm({ ...editForm, variants: [...(editForm.variants || []), newVariant] });
                   }}
@@ -2367,7 +2823,7 @@ const QuizView = ({
                   size="sm" 
                   className="h-8 rounded-xl bg-primary/5 border-primary/20 text-primary hover:bg-primary/20 font-black text-[9px] uppercase italic tracking-widest gap-2"
                 >
-                  <PlusCircle size={14} /> Añadir Variante de Pregunta
+                  <PlusCircle size={14} /> AÃ±adir Variante de Pregunta
                 </Button>
               </div>
 
@@ -2387,13 +2843,13 @@ const QuizView = ({
                         id: 'all', 
                         label: 'ALL', 
                         sub: 'DESK', 
-                        tip: "Muestra todas las variantes de esta pregunta en la misma sesión." 
+                        tip: "Muestra todas las variantes de esta pregunta en la misma sesiÃ³n." 
                       },
                       { 
                         id: 'random_1', 
                         label: 'R1', 
                         sub: 'RANDOM', 
-                        tip: "Selecciona una única variante al azar (original o extra) para el quiz." 
+                        tip: "Selecciona una Ãºnica variante al azar (original o extra) para el quiz." 
                       },
                       { 
                         id: 'random_2', 
@@ -2443,13 +2899,28 @@ const QuizView = ({
                     </div>
 
                     <div className="space-y-2">
-                      <Label className="text-[9px] font-black uppercase tracking-widest text-white/30 italic">Título / Enunciado</Label>
+                      <Label className="text-[9px] font-black uppercase tracking-widest text-white/30 italic">TÃ­tulo / Enunciado</Label>
                       <Textarea 
                         value={variant.question || variant.front || ''} 
                         onChange={(e) => {
                           const next = [...editForm.variants];
-                          if (editForm.type === 'flashcard') next[vIdx].front = e.target.value;
-                          else next[vIdx].question = e.target.value;
+                          const val = e.target.value;
+                          
+                          // Smart Import for variants
+                          if (editForm.type === 'multiple_choice') {
+                            const mcPattern = /([^]*?)\n\s*[Aa][\.\)]\s*([^]*?)\n\s*[Bb][\.\)]\s*([^]*?)\n\s*[Cc][\.\)]\s*([^]*?)\n\s*[Dd][\.\)]\s*([^]*?)$/;
+                            const match = val.match(mcPattern);
+                            if (match) {
+                              next[vIdx].question = match[1].trim();
+                              next[vIdx].options = [match[2].trim(), match[3].trim(), match[4].trim(), match[5].trim()];
+                              next[vIdx].correctAnswer = next[vIdx].options[0]; // Default
+                              setEditForm({ ...editForm, variants: next });
+                              return;
+                            }
+                          }
+                          
+                          if (editForm.type === 'flashcard') next[vIdx].front = val;
+                          else next[vIdx].question = val;
                           setEditForm({ ...editForm, variants: next });
                         }}
                         className="min-h-[80px] bg-black/20 border-white/5 rounded-xl text-sm font-medium text-white/80"

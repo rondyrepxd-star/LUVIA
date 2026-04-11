@@ -19,6 +19,27 @@ export default function RootLayout({
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Code+Pro:wght@400;500&family=Roboto:wght@400;700&family=Open+Sans:wght@400;700&family=Montserrat:wght@400;700&family=Playfair+Display:wght@400;700&family=Lora:wght@400;700&family=Merriweather:wght@400;700&family=Ubuntu:wght@400;700&family=Oswald:wght@400;700&family=Raleway:wght@400;700&family=Pacifico&family=Caveat:wght@400;700&family=Dancing+Script:wght@400;700&family=Lobster&family=Abril+Fatface&display=swap" rel="stylesheet" />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                const observer = new MutationObserver((mutations) => {
+                  mutations.forEach((mutation) => {
+                    if (mutation.type === 'attributes' && mutation.attributeName === 'bis_skin_checked') {
+                      mutation.target.removeAttribute('bis_skin_checked');
+                    }
+                  });
+                });
+                observer.observe(document.documentElement, {
+                  attributes: true,
+                  childList: true,
+                  subtree: true,
+                  attributeFilter: ['bis_skin_checked']
+                });
+              })();
+            `,
+          }}
+        />
       </head>
       <body className="font-body antialiased selection:bg-primary/30" suppressHydrationWarning>
         <ClientLayout>

@@ -594,15 +594,15 @@ const FloatingMenu = ({
         ref={menuRef}
         className={cn(
           "flex flex-col items-center gap-2 transition-all duration-300",
-          !isAnchored && "fixed z-50 floating-menu-container",
-          isAnchored && "w-full",
+          (isNoteOpen || !isAnchored) ? "fixed z-50" : "w-full",
+          !isAnchored && "floating-menu-container",
           isNoteOpen && "notame-editor-active"
         )}
-        style={!isAnchored ? { 
-          left: isNoteOpen ? '50%' : position.x, 
-          top: isNoteOpen ? '50%' : position.y, 
-          transform: isNoteOpen ? `translate(-50%, -50%) translate(${noteOffset.x}px, ${noteOffset.y}px)` : `translateX(-50%) translateY(-100%) translate(${noteOffset.x}px, ${noteOffset.y}px)` 
-        } : {}}
+        style={{ 
+          left: isNoteOpen ? '50%' : (isAnchored ? 'auto' : position.x), 
+          top: isNoteOpen ? '50%' : (isAnchored ? 'auto' : position.y), 
+          transform: isNoteOpen ? `translate(-50%, -50%) translate(${noteOffset.x}px, ${noteOffset.y}px)` : (isAnchored ? 'none' : `translateX(-50%) translateY(-100%) translate(${noteOffset.x}px, ${noteOffset.y}px)`),
+        }}
         onMouseDown={(e) => e.stopPropagation()}
       >
         {!isNoteOpen && (

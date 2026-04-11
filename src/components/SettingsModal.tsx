@@ -90,14 +90,26 @@ const SettingsModal = ({ isOpen, onClose, fontSize, setFontSize, fontFamily, set
                   </div>
                   
                   <div className="flex p-1 bg-black/40 border border-white/5 rounded-xl gap-1 shrink-0">
-                    <button className="flex items-center gap-2 px-4 py-1.5 rounded-lg text-[11px] font-bold bg-[#252525] text-white cursor-default shadow border border-white/5">
-                      <Moon size={14} className="text-primary" /> Dark
+                    <button 
+                      onClick={() => setTheme('default')}
+                      className={cn(
+                        "flex items-center gap-2 px-4 py-1.5 rounded-lg text-[11px] font-bold transition-all",
+                        theme === 'default' ? "bg-[#252525] text-white shadow" : "text-white/40 hover:text-white"
+                      )}
+                    >
+                      <Moon size={14} className={theme === 'default' ? "text-primary" : ""} /> Dark
                     </button>
-                    <button className="flex items-center gap-2 px-4 py-1.5 rounded-lg text-[11px] font-bold text-white/40 hover:text-white hover:bg-white/5 transition-colors cursor-not-allowed" title="Coming soon">
+                    <button className="flex items-center gap-2 px-4 py-1.5 rounded-lg text-[11px] font-bold text-white/40 cursor-not-allowed" title="Coming soon">
                       <Monitor size={14} /> System
                     </button>
-                    <button className="flex items-center gap-2 px-4 py-1.5 rounded-lg text-[11px] font-bold text-white/40 hover:text-white hover:bg-white/5 transition-colors cursor-not-allowed" title="Coming soon">
-                      <Sun size={14} /> Light
+                    <button 
+                      onClick={() => setTheme('light')}
+                      className={cn(
+                        "flex items-center gap-2 px-4 py-1.5 rounded-lg text-[11px] font-bold transition-all",
+                        theme === 'light' ? "bg-white text-black shadow" : "text-white/40 hover:text-white"
+                      )}
+                    >
+                      <Sun size={14} className={theme === 'light' ? "text-amber-500" : ""} /> Light
                     </button>
                   </div>
                 </div>
@@ -207,6 +219,29 @@ const SettingsModal = ({ isOpen, onClose, fontSize, setFontSize, fontFamily, set
                         Emerald Mist <span className="text-emerald-400 text-[9px]">◆</span>
                       </span>
                       <span className="text-[10px] text-white/40 leading-tight">Bosque nocturno digital, calma total.</span>
+                    </button>
+
+                    {/* Polar Light */}
+                    <button 
+                      onClick={() => setTheme('light')}
+                      className={cn(
+                        "flex flex-col items-start p-4 rounded-xl border text-left transition-all",
+                        theme === 'light' 
+                          ? "bg-white/10 border-primary shadow-[0_0_20px_rgba(var(--primary),0.1)] ring-1 ring-primary" 
+                          : "bg-[#111] border-white/5 hover:border-white/20 hover:bg-white/5"
+                      )}
+                    >
+                      <div className="w-full h-20 bg-white rounded-lg border border-black/10 mb-3 flex overflow-hidden">
+                        <div className="w-[30%] bg-[#f5f5f7] h-full border-r border-black/5"></div>
+                        <div className="flex-1 bg-white h-full p-3 flex flex-col gap-2">
+                          <div className="w-1/2 h-1.5 bg-black/10 rounded-full"></div>
+                          <div className="w-3/4 h-1.5 bg-black/5 rounded-full"></div>
+                        </div>
+                      </div>
+                      <span className="text-[11px] font-black uppercase tracking-widest text-white mb-1 flex items-center gap-2">
+                        Polar Light <Sun size={10} className="text-amber-500" />
+                      </span>
+                      <span className="text-[10px] text-white/40 leading-tight">Interfaz clara, suave y minimalista.</span>
                     </button>
                   </div>
                 </div>

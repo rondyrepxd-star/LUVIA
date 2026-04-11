@@ -110,6 +110,7 @@ export default function LuviaApp() {
   
   const [activeTabIndex, setActiveTabIndex] = useState<number | null>(null);
   const [isInitialLoadDone, setIsInitialLoadDone] = useState(false);
+  const noteScrollPositions = useRef<Record<string, number>>({});
 
   // State for intelligent import
   const [isProcessingDoc, setIsProcessingDoc] = useState(false);
@@ -388,6 +389,12 @@ export default function LuviaApp() {
   };
 
   const handleStartMasterQuiz = (selectedIds: string[]) => {
+    // Save current scroll before switching
+    if (activeNoteId && activeTab === 'Notebook') {
+      const scrollArea = document.querySelector('.notebook-scroll-area');
+      if (scrollArea) noteScrollPositions.current[`${activeNoteId}-Notebook`] = scrollArea.scrollTop;
+    }
+    
     const allQuestions: any[] = [];
     selectedIds.forEach(id => {
       const [noteId, qIdxStr] = id.split(':');
@@ -400,6 +407,27 @@ export default function LuviaApp() {
     setMasterQuizData({ quiz: allQuestions });
     setActiveTab('MasterQuizSession');
   };
+
+  const handleTabChange = (tab: AppTab) => {
+    // Save current scroll before switching
+    if (activeNoteId && activeTab === 'Notebook') {
+      const scrollArea = document.querySelector('.notebook-scroll-area');
+      if (scrollArea) noteScrollPositions.current[`${activeNoteId}-Notebook`] = scrollArea.scrollTop;
+    }
+    setActiveTab(tab);
+  };
+
+  useEffect(() => {
+    if (activeTab === 'Notebook' && activeNoteId) {
+      const key = `${activeNoteId}-Notebook`;
+      setTimeout(() => {
+        const scrollArea = document.querySelector('.notebook-scroll-area');
+        if (scrollArea && noteScrollPositions.current[key]) {
+          scrollArea.scrollTop = noteScrollPositions.current[key];
+        }
+      }, 100);
+    }
+  }, [activeTab, activeNoteId]);
 
   const renderContent = () => {
     if (!activeNote) {
@@ -514,10 +542,11 @@ export default function LuviaApp() {
   return (
     <TooltipProvider>
       <div className={cn(
-        "flex h-screen bg-[#0d0d0f] text-foreground overflow-hidden font-body",
+        "flex h-screen bg-[#0d0d0f] text-foreground overflow-hidden font-body transition-colors duration-500",
         appTheme === 'aurora' ? 'theme-aurora' : '',
         appTheme === 'crimson' ? 'theme-crimson' : '',
-        appTheme === 'emerald' ? 'theme-emerald' : ''
+        appTheme === 'emerald' ? 'theme-emerald' : '',
+        appTheme === 'light' ? 'theme-light' : ''
       )} suppressHydrationWarning>
         <input 
           type="file" 
@@ -564,7 +593,7 @@ export default function LuviaApp() {
             onToggle={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
             onOpenSettings={() => setIsSettingsOpen(true)}
             activeTab={activeTab}
-            onTabChange={setActiveTab}
+            onTabChange={handleTabChange}
           />
         </div>
         
@@ -573,20 +602,20 @@ export default function LuviaApp() {
             <div className="z-30 bg-[#0d0d0f]/50 backdrop-blur-xl border-b border-white/5 shrink-0 flex-none">
               <div className="flex items-center justify-between px-3 md:px-8 h-16 gap-2">
                 {activeNote && (
-                  <div className="bg-[#141416] p-1 rounded-2xl inline-flex items-center gap-1 shadow-xl border border-white/5 shrink-0">
-                    {tabs.map(tab => (
-                      <button
-                        key={tab}
-                        onClick={() => setActiveTab(tab)}
-                        className={cn(
-                          "px-3 py-1.5 text-[12px] font-semibold transition-all rounded-xl",
-                          activeTab === tab ? "bg-[#232326] text-white shadow-sm" : "text-muted-foreground hover:text-white hover:bg-white/5"
-                        )}
-                      >
-                        {tab}
-                      </button>
-                    ))}
-                  </div>
+                    <div className="bg-[#141416] p-1 rounded-2xl inline-flex items-center gap-1 shadow-xl border border-white/5 shrink-0">
+                      {tabs.map(tab => (
+                        <button
+                          key={tab}
+                          onClick={() => handleTabChange(tab)}
+                          className={cn(
+                            "px-3 py-1.5 text-[12px] font-semibold transition-all rounded-xl",
+                            activeTab === tab ? "bg-[#232326] text-white shadow-sm" : "text-muted-foreground hover:text-white hover:bg-white/5"
+                          )}
+                        >
+                          {tab}
+                        </button>
+                      ))}
+                    </div>
                 )}
                 {activeNote && (
                   <div className="flex-1 flex justify-center items-center px-2 md:px-6 overflow-hidden gap-2 md:gap-3">

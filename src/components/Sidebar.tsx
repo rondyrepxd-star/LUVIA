@@ -18,7 +18,9 @@ import {
   Sparkles,
   Lock,
   Layers,
-  Zap
+  Zap,
+  FolderDown,
+  Sparkles as SparklesIcon
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -79,6 +81,8 @@ const Sidebar = ({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
   const editInputRef = useRef<HTMLInputElement>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
+  const [dropPosition, setDropPosition] = useState<'above' | 'below' | 'inside' | null>(null);
 
   useEffect(() => {
     if (editingId && editInputRef.current) {
@@ -87,9 +91,177 @@ const Sidebar = ({
     }
   }, [editingId]);
 
+  // --- Handlers ---
+  function handleFolderDragStart(e: React.DragEvent, folderId: string) {
+    e.dataTransfer.setData('folderId', folderId);
+  }
+
+  function handleNoteDragStart(e: React.DragEvent, noteId: string) {
+    e.dataTransfer.setData('noteId', noteId);
+  }
+
+  function handleDragOver(e: React.DragEvent, id: string, type: 'folder' | 'note') {
+    e.preventDefault();
+    const rect = e.currentTarget.getBoundingClientRect();
+    const y = e.clientY - rect.top;
+    
+    setDragOverId(id);
+    if (type === 'folder') {
+      if (y < rect.height * 0.25) setDropPosition('above');
+      else if (y > rect.height * 0.75) setDropPosition('below');
+      else setDropPosition('inside');
+    } else {
+      if (y < rect.height * 0.5) setDropPosition('above');
+      else setDropPosition('below');
+    }
+  }
+
+  function handleFolderDrop(e: React.DragEvent, targetId: string | undefined, type: 'folder' | 'note' | 'root' | any) {
+    e.preventDefault();
+    setDragOverId(null);
+    setDropPosition(null);
+
+    const folderId = e.dataTransfer.getData('folderId');
+    const noteId = e.dataTransfer.getData('noteId');
+    
+    if (noteId) {
+      if (dropPosition === 'above' || dropPosition === 'below') {
+        setNotes(prev => {
+          const moving = prev.find(n => n.id === noteId);
+          if (!moving) return prev;
+          
+          const filtered = prev.filter(n => n.id !== noteId);
+          const targetIndex = filtered.findIndex(n => n.id === targetId);
+          
+          const newNotes = [...filtered];
+          const newParentId = type === 'root' ? undefined : (type === 'note' ? prev.find(n => n.id === targetId)?.folderId : targetId);
+          
+          if (targetIndex !== -1) {
+            newNotes.splice(dropPosition === 'above' ? targetIndex : targetIndex + 1, 0, { ...moving, folderId: newParentId });
+          } else {
+            newNotes.push({ ...moving, folderId: newParentId });
+          }
+          return newNotes;
+        });
+      } else {
+        if (type === 'root') {
+          setNotes(prev => prev.map(n => n.id === noteId ? { ...n, folderId: undefined } : n));
+          return;
+        }
+        setNotes(prev => prev.map(n => n.id === noteId ? { ...n, folderId: targetId } : n));
+        if (targetId && type === 'folder') {
+          setFolders(prev => prev.map(f => f.id === targetId ? { ...f, isOpen: true } : f));
+        }
+      }
+      return;
+    }
+
+    if (folderId) {
+      if (folderId === targetId) return;
+      
+      const isDescendant = (parentId: string, childId: string): boolean => {
+        const child = folders.find(f => f.id === childId);
+        if (!child || !child.parentId) return false;
+        if (child.parentId === parentId) return true;
+        return isDescendant(parentId, child.parentId);
+      };
+      
+      if (targetId && isDescendant(folderId, targetId)) return;
+
+      if (dropPosition === 'above' || dropPosition === 'below') {
+        setFolders(prev => {
+          const moving = prev.find(f => f.id === folderId);
+          if (!moving) return prev;
+          
+          const filtered = prev.filter(f => f.id !== folderId);
+          const targetIndex = filtered.findIndex(f => f.id === targetId);
+          if (targetIndex === -1) return prev;
+          
+          const newFolders = [...filtered];
+          const newParentId = type === 'root' ? undefined : (folders.find(f => f.id === targetId)?.parentId);
+          
+          newFolders.splice(dropPosition === 'above' ? targetIndex : targetIndex + 1, 0, {
+            ...moving,
+            parentId: newParentId
+          });
+          return newFolders;
+        });
+      } else {
+        setFolders(prev => prev.map(f => f.id === folderId ? { ...f, parentId: type === 'root' ? undefined : targetId } : f));
+        if (targetId && type === 'folder') {
+          setFolders(prev => prev.map(f => f.id === targetId ? { ...f, isOpen: true } : f));
+        }
+      }
+    }
+  }
+
+  function handleNoteDrop(e: React.DragEvent, targetId?: string) {
+    e.preventDefault();
+    const noteId = e.dataTransfer.getData('noteId');
+    if (noteId) {
+       setNotes(prev => prev.map(n => n.id === noteId ? { ...n, folderId: targetId } : n));
+    }
+  }
+
+  const handleToggleFolder = (id: string) => setFolders(prev => prev.map(f => f.id === id ? { ...f, isOpen: !f.isOpen } : f));
+  const startEditing = (id: string, initialValue: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setEditingId(id);
+    setEditValue(initialValue);
+  };
+  const saveEdit = () => {
+    if (!editingId) return;
+    const isFolder = folders.some(f => f.id === editingId);
+    if (isFolder) setFolders(prev => prev.map(f => f.id === editingId ? { ...f, name: editValue || f.name } : f));
+    else setNotes(prev => prev.map(n => n.id === editingId ? { ...n, title: editValue || n.title } : n));
+    setEditingId(null);
+  };
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') saveEdit();
+    if (e.key === 'Escape') setEditingId(null);
+  };
+  const confirmDeleteNote = (id: string) => {
+    setNotes(prev => prev.filter(n => n.id !== id));
+    if (activeNoteId === id) onSelectNote(null);
+    setNoteToDelete(null);
+  };
+  const deleteFolderCascading = (id: string) => {
+    setFolders(prev => prev.filter(f => f.id !== id && f.parentId !== id));
+    setNotes(prev => prev.filter(n => n.folderId !== id));
+    if (activeNoteId && notes.filter(n => n.folderId === id).some(n => n.id === activeNoteId)) onSelectNote(null);
+    setFolderToDelete(null);
+  };
+  const handleNewNoteClick = (folderId?: string) => {
+    if (folderId) setFolders(prev => prev.map(f => f.id === folderId ? { ...f, isOpen: true } : f));
+    const newId = onCreateNote(folderId);
+    setTimeout(() => startEditing(newId, 'New Note'), 50);
+  };
+  const handleNewFolderClick = (parentId?: string) => {
+    const newId = onCreateFolder(parentId);
+    setTimeout(() => startEditing(newId, parentId ? 'New Sub-collection' : 'New Collection'), 50);
+  };
+  const handleExportFolder = (folder: FolderType) => {
+    const collectData = (currentFolder: FolderType): any => ({
+      folder: currentFolder,
+      notes: notes.filter(n => n.folderId === currentFolder.id),
+      subfolders: folders.filter(f => f.parentId === currentFolder.id).map(sub => collectData(sub))
+    });
+    const exportData = { type: 'luvia_folder_export', data: collectData(folder) };
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Luvia_Collection_${folder.name}.luvia`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setFolderToDownload(null);
+  };
+  const truncateName = (name: string) => name.length > 17 ? name.substring(0, 17) + '...' : name;
+
   if (isCollapsed) {
     return (
-      <aside className="w-12 bg-[#0d0d0f] border-r border-white/5 flex flex-col items-center py-6 h-full shadow-2xl transition-all duration-300">
+      <aside className="w-12 bg-[#0d0d0f] border-r border-white/5 flex flex-col items-center py-6 h-full shadow-2xl">
         <Button variant="ghost" size="icon" onClick={onToggle} className="text-muted-foreground hover:text-primary mb-auto">
           <ChevronRight size={20} />
         </Button>
@@ -100,133 +272,11 @@ const Sidebar = ({
     );
   }
 
-  const handleToggleFolder = (id: string) => {
-    setFolders(prev => prev.map(f => 
-      f.id === id ? { ...f, isOpen: !f.isOpen } : f
-    ));
-  };
-
-  const handleUpdateFolder = (updatedFolder: FolderType) => {
-    setFolders(prev => prev.map(f => f.id === updatedFolder.id ? updatedFolder : f));
-  };
-
-  const handleUpdateNote = (updatedNote: StudyNote) => {
-    setNotes(prev => prev.map(n => n.id === updatedNote.id ? updatedNote : n));
-  };
-
-  const startEditing = (id: string, initialValue: string, e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    setEditingId(id);
-    setEditValue(initialValue);
-  };
-
-  const saveEdit = () => {
-    if (!editingId) return;
-    const isFolder = folders.some(f => f.id === editingId);
-    if (isFolder) {
-      setFolders(prev => prev.map(f => f.id === editingId ? { ...f, name: editValue || f.name } : f));
-    } else {
-      setNotes(prev => prev.map(n => n.id === editingId ? { ...n, title: editValue || n.title } : n));
-    }
-    setEditingId(null);
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') saveEdit();
-    if (e.key === 'Escape') setEditingId(null);
-  };
-
-  const confirmDeleteNote = (id: string) => {
-    setNotes(prev => prev.filter(n => n.id !== id));
-    if (activeNoteId === id) onSelectNote(null);
-    setNoteToDelete(null);
-  };
-
-  const deleteFolderCascading = (id: string) => {
-    setFolders(prev => prev.filter(f => f.id !== id && f.parentId !== id));
-    setNotes(prev => prev.filter(n => n.folderId !== id));
-    const notesInFolder = notes.filter(n => n.folderId === id);
-    if (activeNoteId && notesInFolder.some(n => n.id === activeNoteId)) {
-      onSelectNote(null);
-    }
-    setFolderToDelete(null);
-  };
-
-  const handleNewNoteClick = (folderId?: string) => {
-    if (folderId) {
-      setFolders(prev => prev.map(f => f.id === folderId ? { ...f, isOpen: true } : f));
-    }
-    const newId = onCreateNote(folderId);
-    setTimeout(() => startEditing(newId, 'New Note'), 50);
-  };
-
-  const handleNewFolderClick = (parentId?: string) => {
-    const newId = onCreateFolder(parentId);
-    setTimeout(() => startEditing(newId, parentId ? 'New Sub-collection' : 'New Collection'), 50);
-  };
-  
-  const handleExportFolder = (folder: FolderType) => {
-    // Recursive folder and notes collection
-    const collectData = (currentFolder: FolderType): any => {
-      const subfolders = folders.filter(f => f.parentId === currentFolder.id);
-      const folderNotes = notes.filter(n => n.folderId === currentFolder.id);
-      
-      const children: any[] = subfolders.map(sub => collectData(sub));
-      
-      return {
-        folder: currentFolder,
-        notes: folderNotes,
-        subfolders: children
-      };
-    };
-
-    const exportData = {
-      type: 'luvia_folder_export',
-      export_date: new Date().toISOString(),
-      data: collectData(folder)
-    };
-
-    const dataStr = JSON.stringify(exportData, null, 2);
-    const blob = new Blob([dataStr], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `Luvia_Collection_${folder.name.replace(/\s+/g, '_')}.luvia`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    
-    setFolderToDownload(null);
-  };
-
-  const truncateName = (name: string) => {
-    if (name.length > 17) return name.substring(0, 17) + '...';
-    return name;
-  };
-
-  const handleNoteDragStart = (e: React.DragEvent, noteId: string) => {
-    e.dataTransfer.setData('noteId', noteId);
-  };
-
-  const handleNoteDrop = (e: React.DragEvent, targetFolderId: string | undefined) => {
-    e.preventDefault();
-    const noteId = e.dataTransfer.getData('noteId');
-    if (!noteId) return;
-    setNotes(prev => prev.map(n => n.id === noteId ? { ...n, folderId: targetFolderId } : n));
-    if (targetFolderId) {
-      setFolders(prev => prev.map(f => f.id === targetFolderId ? { ...f, isOpen: true } : f));
-    }
-  };
-
-  const filteredNotes = notes.filter(n => 
-    n.title.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredNotes = notes.filter(n => n.title.toLowerCase().includes(searchQuery.toLowerCase()));
 
   const renderFolderItems = (folderId: string, depth: number = 0) => {
     const subFolders = folders.filter(f => f.parentId === folderId);
     const folderNotes = filteredNotes.filter(n => n.folderId === folderId);
-
     const indent = Math.min(depth, 2) * 8;
 
     return (
@@ -236,19 +286,22 @@ const Sidebar = ({
             key={note.id} 
             draggable 
             onDragStart={(e) => handleNoteDragStart(e, note.id)}
+            onDragOver={(e) => handleDragOver(e, note.id, 'note')}
+            onDrop={(e) => handleFolderDrop(e, note.id, 'note')}
+            onDragLeave={() => { setDragOverId(null); setDropPosition(null); }}
             onClick={() => onSelectNote(note.id)} 
-            className={cn("relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer group/note transition-all", activeNoteId === note.id ? "bg-[#252525] text-foreground font-bold" : "text-muted-foreground hover:text-foreground hover:bg-[#202020]")}
+            className={cn(
+              "relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer group/note transition-all", 
+              activeNoteId === note.id ? "bg-[#252525] text-foreground font-bold" : "text-muted-foreground hover:text-foreground hover:bg-[#202020]",
+              dragOverId === note.id && (dropPosition === 'above' || dropPosition === 'below') && "ring-1 ring-primary"
+            )}
           >
+            {dragOverId === note.id && dropPosition === 'above' && <div className="absolute -top-[1px] left-0 right-0 h-[2px] bg-primary z-50 rounded-full" />}
+            {dragOverId === note.id && dropPosition === 'below' && <div className="absolute -bottom-[1px] left-0 right-0 h-[2px] bg-primary z-50 rounded-full" />}
             {activeNoteId === note.id && <div className="absolute left-[-10px] top-1/2 -translate-y-1/2 w-1 h-4 bg-primary rounded-full" />}
-            <div 
-              className={cn(
-                "w-6 h-6 rounded-lg flex items-center justify-center shrink-0 transition-all shadow-sm",
-                note.color ? "" : (activeNoteId === note.id ? "bg-primary text-primary-foreground" : "bg-white/5 group-hover/note:bg-white/10")
-              )}
-              style={note.color ? { backgroundColor: `${note.color}20`, color: note.color } : {}}
-            >
+            <div className={cn("w-6 h-6 rounded-lg flex items-center justify-center shrink-0 shadow-sm", activeNoteId === note.id ? "bg-primary text-primary-foreground" : "bg-white/5")}>
               <NoteIcon iconName={note.icon} size={12} />
-              {note.quiz && <Sparkles size={8} className="absolute -top-1 -right-1 text-primary animate-pulse" />}
+              {note.quiz && <SparklesIcon size={8} className="absolute -top-1 -right-1 text-primary animate-pulse" />}
             </div>
             {editingId === note.id ? (
               <input
@@ -263,57 +316,39 @@ const Sidebar = ({
             ) : (
               <span className="text-xs truncate flex-1">{truncateName(note.title)}</span>
             )}
-            <div className="absolute left-1 -top-3 z-20 flex items-center gap-1 opacity-0 group-hover/note:opacity-100 transition-all duration-200 bg-background/95 backdrop-blur-md border border-border/50 p-1 rounded-full shadow-xl scale-90 group-hover/note:scale-100 origin-left">
-              <button 
-                onClick={(e) => { 
-                  e.stopPropagation();
-                  setNoteToEdit(note);
-                }} 
-                className="p-1.5 hover:bg-primary/20 hover:text-primary rounded-full transition-colors"
-                title="Edit Note"
-              >
-                <Pencil size={10} />
-              </button>
-              <button onClick={(e) => { e.stopPropagation(); setNoteToDelete(note.id); }} className="p-1.5 hover:bg-destructive/20 hover:text-destructive rounded-full transition-colors" title="Delete"><Trash2 size={10} /></button>
+            <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 group-hover/note:opacity-100 transition-all">
+               <button onClick={(e) => { e.stopPropagation(); setNoteToEdit(note); }} className="p-1.5 hover:bg-primary/20 text-muted-foreground hover:text-primary rounded-full transition-colors"><Pencil size={11} /></button>
+               <button onClick={(e) => { e.stopPropagation(); setNoteToDelete(note.id); }} className="p-1.5 hover:bg-destructive/20 text-muted-foreground hover:text-destructive rounded-full transition-colors"><Trash2 size={11} /></button>
             </div>
           </div>
         ))}
-
         {subFolders.map(sub => (
           <div key={sub.id} className="space-y-1">
             <div 
-              draggable={false}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={(e) => handleNoteDrop(e, sub.id)}
-              className={cn(
-                "relative flex items-center gap-1.5 px-3 py-1.5 rounded-xl cursor-pointer group/folder transition-all", 
-                sub.isOpen ? "bg-primary/5" : "hover:bg-[#252525]"
-              )} 
+              draggable 
+              onDragStart={(e) => handleFolderDragStart(e, sub.id)}
+              onDragOver={(e) => handleDragOver(e, sub.id, 'folder')}
+              onDrop={(e) => handleFolderDrop(e, sub.id, 'folder')}
+              onDragLeave={() => { setDragOverId(null); setDropPosition(null); }}
+              className={cn("relative flex items-center gap-1.5 px-3 py-1.5 rounded-xl cursor-pointer group/folder transition-all", sub.isOpen ? "bg-primary/5" : "hover:bg-[#252525]", dragOverId === sub.id && dropPosition === 'inside' && "bg-primary/20")} 
               onClick={(e) => { e.stopPropagation(); handleToggleFolder(sub.id); }}
             >
-              {sub.isOpen ? <ChevronDown size={14} className="shrink-0" /> : <ChevronRight size={14} className="shrink-0" />}
-              <div className="shrink-0" style={{ color: sub.color || 'inherit' }}>
-                <NoteIcon iconName={sub.icon} size={14} />
-              </div>
+              {dragOverId === sub.id && dropPosition === 'above' && <div className="absolute -top-[1px] left-0 right-0 h-[2px] bg-primary z-50 rounded-full" />}
+              {dragOverId === sub.id && dropPosition === 'below' && <div className="absolute -bottom-[1px] left-0 right-0 h-[2px] bg-primary z-50 rounded-full" />}
+              {sub.isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+              <NoteIcon iconName={sub.icon} size={14} />
               {editingId === sub.id ? (
-                <input
-                  ref={editInputRef}
-                  value={editValue}
-                  onChange={(e) => setEditValue(e.target.value)}
-                  onBlur={saveEdit}
-                  onKeyDown={handleKeyDown}
-                  className="bg-background border border-primary text-xs font-medium px-1 rounded outline-none w-full"
-                  onClick={(e) => e.stopPropagation()}
-                />
+                <input ref={editInputRef} value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={saveEdit} onKeyDown={handleKeyDown} className="bg-background border border-primary text-xs px-1 rounded outline-none w-full" onClick={(e) => e.stopPropagation()} />
               ) : (
                 <span className="text-sm font-medium truncate flex-1">{truncateName(sub.name)}</span>
               )}
-              <div className="absolute left-1 -top-3 z-20 flex items-center gap-1 opacity-0 group-hover/folder:opacity-100 transition-all duration-200 bg-background/95 backdrop-blur-md border border-border/50 p-1 rounded-full shadow-xl scale-90 group-hover/folder:scale-100 origin-left">
-                <button onClick={(e) => { e.stopPropagation(); handleNewNoteClick(sub.id); }} className="p-1.5 hover:bg-primary/20 hover:text-primary rounded-full transition-colors" title="New Note"><Plus size={10} /></button>
-                <button onClick={(e) => { e.stopPropagation(); setFolderToDownload(sub); }} className="p-1.5 hover:bg-primary/20 hover:text-primary rounded-full transition-colors" title="Download Folder"><Download size={10} /></button>
-                <button onClick={(e) => { e.stopPropagation(); handleNewFolderClick(sub.id); }} className="p-1.5 hover:bg-primary/20 hover:text-primary rounded-full transition-colors" title="New Sub-folder"><FolderPlus size={10} /></button>
-                <button onClick={(e) => { e.stopPropagation(); setFolderToEdit(sub); }} className="p-1.5 hover:bg-primary/20 hover:text-primary rounded-full transition-colors" title="Edit Folder"><Pencil size={10} /></button>
-                <button onClick={(e) => { e.stopPropagation(); setFolderToDelete(sub.id); }} className="p-1.5 hover:bg-destructive/20 hover:text-destructive rounded-full transition-colors" title="Delete"><Trash2 size={10} /></button>
+              
+              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 group-hover/folder:opacity-100 transition-all">
+                <button onClick={(e) => { e.stopPropagation(); handleNewNoteClick(sub.id); }} className="p-1 px-1.5 hover:bg-primary/20 text-muted-foreground hover:text-primary rounded-full transition-colors" title="New Note"><Plus size={11} /></button>
+                <button onClick={(e) => { e.stopPropagation(); setFolderToDownload(sub); }} className="p-1 px-1.5 hover:bg-primary/20 text-muted-foreground hover:text-primary rounded-full transition-colors" title="Download Folder"><Download size={11} /></button>
+                <button onClick={(e) => { e.stopPropagation(); handleNewFolderClick(sub.id); }} className="p-1 px-1.5 hover:bg-primary/20 text-muted-foreground hover:text-primary rounded-full transition-colors" title="New Sub-folder"><FolderDown size={11} /></button>
+                <button onClick={(e) => { e.stopPropagation(); setFolderToEdit(sub); }} className="p-1 px-1.5 hover:bg-primary/20 text-muted-foreground hover:text-primary rounded-full transition-colors" title="Edit Folder"><Pencil size={11} /></button>
+                <button onClick={(e) => { e.stopPropagation(); setFolderToDelete(sub.id); }} className="p-1 px-1.5 hover:bg-destructive/20 text-muted-foreground hover:text-destructive rounded-full transition-colors" title="Delete"><Trash2 size={11} /></button>
               </div>
             </div>
             {sub.isOpen && renderFolderItems(sub.id, depth + 1)}
@@ -324,7 +359,7 @@ const Sidebar = ({
   };
 
   return (
-    <aside className="w-64 bg-[#161616] border-r border-border/40 flex flex-col h-full shadow-2xl transition-all duration-300">
+    <aside className="w-64 bg-[#161616] border-r border-border/40 flex flex-col h-full shadow-2xl">
       <div className="p-5 space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 font-bold text-primary">
@@ -336,227 +371,67 @@ const Sidebar = ({
           </Button>
         </div>
       </div>
-
       <ScrollArea className="flex-1 px-3">
         <div className="space-y-2 py-2">
-          <div 
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={(e) => handleNoteDrop(e, undefined)}
-            className="flex items-center px-2 mb-2 gap-2"
-          >
+          <div onDragOver={(e) => e.preventDefault()} onDrop={(e) => handleFolderDrop(e, undefined)} className="flex items-center px-2 mb-2 gap-2">
             <LayoutGrid size={16} className="text-muted-foreground" />
-            <span className="text-sm font-semibold text-muted-foreground">Library</span>
-            <button 
-              onClick={(e) => { e.preventDefault(); handleNewFolderClick(); }} 
-              className="p-1 hover:bg-[#252525] rounded-lg transition-all text-muted-foreground hover:text-primary ml-1"
-              title="Add Folder"
-            >
-              <FolderPlus size={14} />
-            </button>
+            <span className="text-sm font-semibold text-muted-foreground uppercase tracking-widest text-[9px]">Library</span>
+            <button onClick={() => handleNewFolderClick()} className="p-1 hover:text-primary transition-all text-muted-foreground/40"><FolderDown size={14} /></button>
           </div>
           <div className="px-2 mb-4 space-y-1">
-            <button 
-              onClick={() => onTabChange('MasterQuiz')}
-              className={cn(
-                "w-full flex items-center gap-2.5 px-3 py-2 rounded-xl transition-all group/mq",
-                activeTab === 'MasterQuiz' ? "bg-primary/10 text-primary border border-primary/20 shadow-[0_0_15px_rgba(var(--primary),0.1)]" : "text-muted-foreground hover:bg-white/5 hover:text-white border border-transparent"
-              )}
-            >
-              <div className={cn("w-6 h-6 rounded-lg flex items-center justify-center transition-all", activeTab === 'MasterQuiz' ? "bg-primary text-primary-foreground shadow-lg" : "bg-white/5 group-hover/mq:bg-white/10")}>
+            <button onClick={() => onTabChange('MasterQuiz')} className={cn("w-full flex items-center gap-2.5 px-3 py-2 rounded-xl transition-all", activeTab === 'MasterQuiz' ? "bg-primary/10 text-primary border border-primary/20" : "text-muted-foreground hover:bg-white/5 border border-transparent")}>
+              <div className={cn("w-6 h-6 rounded-lg flex items-center justify-center", activeTab === 'MasterQuiz' ? "bg-primary text-primary-foreground shadow-lg" : "bg-white/5")}>
                 <Zap size={14} className={cn(activeTab === 'MasterQuiz' ? "fill-primary-foreground" : "")} />
               </div>
-              <span className="text-[11px] font-black uppercase italic tracking-widest">Master Quiz</span>
-              {activeTab === 'MasterQuiz' && <div className="ml-auto w-1.5 h-1.5 bg-primary rounded-full animate-pulse" />}
+              <span className="text-[11px] font-black uppercase tracking-widest">Master Quiz</span>
             </button>
           </div>
-
           <div className="space-y-1">
-            {folders.length === 0 && notes.length === 0 ? (
-              <div className="mt-8 px-4 text-center space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <div className="w-16 h-16 bg-primary/5 rounded-2xl border-2 border-dashed border-primary/20 flex items-center justify-center mx-auto transition-colors group-hover:border-primary/40">
-                  <FolderPlus size={24} className="text-primary/40" />
+            {folders.filter(f => !f.parentId).map((folder) => (
+              <div key={folder.id} className="space-y-1">
+                <div draggable onDragStart={(e) => handleFolderDragStart(e, folder.id)} onDragOver={(e) => handleDragOver(e, folder.id, 'folder')} onDrop={(e) => handleFolderDrop(e, folder.id, 'folder')} onDragLeave={() => { setDragOverId(null); setDropPosition(null); }} className={cn("relative flex items-center gap-1.5 px-3 py-2 rounded-xl cursor-pointer group/folder transition-all", folder.isOpen ? "bg-primary/5" : "hover:bg-[#252525]", dragOverId === folder.id && dropPosition === 'inside' && "bg-primary/20")} onClick={() => handleToggleFolder(folder.id)}>
+                   {dragOverId === folder.id && dropPosition === 'above' && <div className="absolute -top-[1px] left-0 right-0 h-[2px] bg-primary z-50 rounded-full shadow-[0_0_8px_rgba(59,130,246,0.5)]" />}
+                   {dragOverId === folder.id && dropPosition === 'below' && <div className="absolute -bottom-[1px] left-0 right-0 h-[2px] bg-primary z-50 rounded-full shadow-[0_0_8px_rgba(59,130,246,0.5)]" />}
+                   {folder.isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                   <NoteIcon iconName={folder.icon} size={14} />
+                   <span className="text-sm font-medium truncate flex-1">{truncateName(folder.name)}</span>
+                   
+                   <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 group-hover/folder:opacity-100 transition-all">
+                      <button onClick={(e) => { e.stopPropagation(); handleNewNoteClick(folder.id); }} className="p-1 px-1.5 hover:bg-primary/20 text-muted-foreground hover:text-primary rounded-full transition-colors" title="New Note"><Plus size={11} /></button>
+                      <button onClick={(e) => { e.stopPropagation(); setFolderToDownload(folder); }} className="p-1 px-1.5 hover:bg-primary/20 text-muted-foreground hover:text-primary rounded-full transition-colors" title="Download Folder"><Download size={11} /></button>
+                      <button onClick={(e) => { e.stopPropagation(); handleNewFolderClick(folder.id); }} className="p-1 px-1.5 hover:bg-primary/20 text-muted-foreground hover:text-primary rounded-full transition-colors" title="New Sub-folder"><FolderDown size={11} /></button>
+                      <button onClick={(e) => { e.stopPropagation(); setFolderToEdit(folder); }} className="p-1 px-1.5 hover:bg-primary/20 text-muted-foreground hover:text-primary rounded-full transition-colors" title="Edit Folder"><Pencil size={11} /></button>
+                      <button onClick={(e) => { e.stopPropagation(); setFolderToDelete(folder.id); }} className="p-1 px-1.5 hover:bg-destructive/20 text-muted-foreground hover:text-destructive rounded-full transition-colors" title="Delete"><Trash2 size={11} /></button>
+                   </div>
                 </div>
-                <div className="space-y-1">
-                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/30 italic">Librería vacía</p>
-                  <button 
-                    onClick={() => handleNewFolderClick()}
-                    className="text-xs font-black uppercase italic tracking-tighter text-primary hover:text-white transition-colors"
-                  >
-                    Crea tu primera carpeta
-                  </button>
-                </div>
+                {folder.isOpen && renderFolderItems(folder.id)}
               </div>
-            ) : (
-              <>
-                {folders.filter(f => !f.parentId).map((folder) => (
-                  <div key={folder.id} className="space-y-1">
-                    <div 
-                      draggable={false}
-                      onDragOver={(e) => e.preventDefault()}
-                      onDrop={(e) => handleNoteDrop(e, folder.id)}
-                      className={cn(
-                        "relative flex items-center gap-1.5 px-3 py-2 rounded-xl cursor-pointer group/folder transition-all", 
-                        folder.isOpen ? "bg-primary/5" : "hover:bg-[#252525]"
-                      )} 
-                      onClick={() => handleToggleFolder(folder.id)}
-                    >
-                      {folder.isOpen ? <ChevronDown size={14} className="shrink-0" /> : <ChevronRight size={14} className="shrink-0" />}
-                      <div className="shrink-0" style={{ color: folder.color || 'inherit' }}>
-                        <NoteIcon iconName={folder.icon} size={14} />
-                      </div>
-                      {editingId === folder.id ? (
-                        <input
-                          ref={editInputRef}
-                          value={editValue}
-                          onChange={(e) => setEditValue(e.target.value)}
-                          onBlur={saveEdit}
-                          onKeyDown={handleKeyDown}
-                          className="bg-background border border-primary text-sm font-medium px-1 rounded outline-none w-full"
-                          onClick={(e) => e.stopPropagation()}
-                        />
-                      ) : (
-                        <span className="text-sm font-medium truncate flex-1">{truncateName(folder.name)}</span>
-                      )}
-                      <div className="absolute left-1 -top-3 z-20 flex items-center gap-1 opacity-0 group-hover/folder:opacity-100 transition-all duration-200 bg-background/95 backdrop-blur-md border border-border/50 p-1 rounded-full shadow-xl scale-90 group-hover/folder:scale-100 origin-left">
-                        <button onClick={(e) => { e.stopPropagation(); handleNewNoteClick(folder.id); }} className="p-1.5 hover:bg-primary/20 hover:text-primary rounded-full transition-colors" title="New Note"><Plus size={10} /></button>
-                        <button onClick={(e) => { e.stopPropagation(); setFolderToDownload(folder); }} className="p-1.5 hover:bg-primary/20 hover:text-primary rounded-full transition-colors" title="Download Folder"><Download size={10} /></button>
-                        <button onClick={(e) => { e.stopPropagation(); handleNewFolderClick(folder.id); }} className="p-1.5 hover:bg-primary/20 hover:text-primary rounded-full transition-colors" title="New Sub-folder"><FolderPlus size={10} /></button>
-                        <button onClick={(e) => { e.stopPropagation(); setFolderToEdit(folder); }} className="p-1.5 hover:bg-primary/20 hover:text-primary rounded-full transition-colors" title="Edit Folder"><Pencil size={10} /></button>
-                        <button onClick={(e) => { e.stopPropagation(); setFolderToDelete(folder.id); }} className="p-1.5 hover:bg-destructive/20 hover:text-destructive rounded-full transition-colors" title="Delete"><Trash2 size={10} /></button>
-                      </div>
-                    </div>
-                    {folder.isOpen && renderFolderItems(folder.id)}
-                  </div>
-                ))}
-
-                {filteredNotes.filter(n => !n.folderId).length > 0 && (
-                  <div 
-                    onDragOver={(e) => e.preventDefault()}
-                    onDrop={(e) => handleNoteDrop(e, undefined)}
-                    className="pt-4 space-y-1 border-t border-border/10 mt-4"
-                  >
-                    <p className="px-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2">Uncategorized</p>
-                    {filteredNotes.filter(n => !n.folderId).map((note) => (
-                      <div 
-                        key={note.id} 
-                        draggable 
-                        onDragStart={(e) => handleNoteDragStart(e, note.id)}
-                        onClick={() => onSelectNote(note.id)} 
-                        className={cn("relative flex items-center gap-1.5 px-3 py-2 rounded-xl cursor-pointer group/note transition-all", activeNoteId === note.id ? "bg-[#252525] text-foreground font-bold" : "text-muted-foreground hover:text-foreground hover:bg-[#202020]")}
-                      >
-                        {activeNoteId === note.id && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 bg-primary rounded-full" />}
-                        <div 
-                          className={cn(
-                            "w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-all shadow-sm",
-                            note.color ? "" : (activeNoteId === note.id ? "bg-primary text-primary-foreground" : "bg-white/5 group-hover/note:bg-white/10")
-                          )}
-                          style={note.color ? { backgroundColor: `${note.color}20`, color: note.color } : {}}
-                        >
-                          <NoteIcon iconName={note.icon} size={14} />
-                          {note.quiz && <Sparkles size={10} className="absolute -top-1 -right-1 text-primary animate-pulse" />}
-                        </div>
-                        {editingId === note.id ? (
-                          <input
-                            ref={editInputRef}
-                            value={editValue}
-                            onChange={(e) => setEditValue(e.target.value)}
-                            onBlur={saveEdit}
-                            onKeyDown={handleKeyDown}
-                            className="bg-background border border-primary text-xs font-medium px-1 rounded outline-none w-full"
-                            onClick={(e) => e.stopPropagation()}
-                          />
-                        ) : (
-                          <span className="text-sm truncate flex-1">{truncateName(note.title)}</span>
-                        )}
-                        <div className="absolute left-1 -top-3 z-20 flex items-center gap-1 opacity-0 group-hover/note:opacity-100 transition-all duration-200 bg-background/95 backdrop-blur-md border border-border/50 p-1 rounded-full shadow-xl scale-90 group-hover/note:scale-100 origin-left">
-                          <button 
-                            onClick={(e) => { 
-                              e.stopPropagation();
-                              setNoteToEdit(note);
-                            }} 
-                            className="p-1.5 hover:bg-primary/20 hover:text-primary rounded-full transition-colors"
-                            title="Edit Note"
-                          >
-                            <Pencil size={10} />
-                          </button>
-                          <button onClick={(e) => { e.stopPropagation(); setNoteToDelete(note.id); }} className="p-1.5 hover:bg-destructive/20 hover:text-destructive rounded-full transition-colors" title="Delete"><Trash2 size={10} /></button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </>
-            )}
+            ))}
+            {filteredNotes.filter(n => !n.folderId).map((note) => (
+              <div key={note.id} draggable onDragStart={(e) => handleNoteDragStart(e, note.id)} onClick={() => onSelectNote(note.id)} className={cn("relative flex items-center gap-1.5 px-3 py-2 rounded-xl cursor-pointer transition-all", activeNoteId === note.id ? "bg-[#252525] text-foreground font-bold" : "text-muted-foreground hover:bg-[#202020]")}>
+                 {activeNoteId === note.id && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 bg-primary rounded-full" />}
+                 <NoteIcon iconName={note.icon} size={14} />
+                 <span className="text-sm truncate flex-1">{truncateName(note.title)}</span>
+              </div>
+            ))}
           </div>
         </div>
       </ScrollArea>
-
       <div className="p-4 mt-auto border-t border-border/10">
-        <Button 
-          variant="ghost" 
-          onClick={onOpenSettings} 
-          className="w-full justify-start gap-3 text-muted-foreground hover:text-foreground hover:bg-[#252525] px-3 py-2 rounded-xl h-auto"
-        >
-          <Settings size={18} />
-          <span className="font-semibold text-sm">Settings</span>
-        </Button>
+        <Button variant="ghost" onClick={onOpenSettings} className="w-full justify-start gap-3 px-3 py-2 h-auto"><Settings size={18} /><span className="font-semibold text-sm">Settings</span></Button>
       </div>
-
-      <FolderEditModal 
-        isOpen={!!folderToEdit} 
-        onClose={() => setFolderToEdit(null)} 
-        folder={folderToEdit!} 
-        onUpdate={handleUpdateFolder} 
-        noteCount={notes.filter(n => n.folderId === folderToEdit?.id).length}
-      />
-
-      {noteToEdit && (
-        <NoteEditModal 
-          isOpen={!!noteToEdit} 
-          onClose={() => setNoteToEdit(null)} 
-          note={noteToEdit}
-          onUpdate={handleUpdateNote}
-        />
-      )}
-
+      <FolderEditModal isOpen={!!folderToEdit} onClose={() => setFolderToEdit(null)} folder={folderToEdit!} onUpdate={(f) => setFolders(prev => prev.map(old => old.id === f.id ? f : old))} noteCount={notes.filter(n => n.folderId === folderToEdit?.id).length} />
+      {noteToEdit && <NoteEditModal isOpen={!!noteToEdit} onClose={() => setNoteToEdit(null)} note={noteToEdit} onUpdate={(n) => setNotes(prev => prev.map(old => old.id === n.id ? n : old))} />}
       <AlertDialog open={!!folderToDelete} onOpenChange={(open) => !open && setFolderToDelete(null)}>
         <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-            <AlertDialogDescription>This will permanently delete the folder and all its content, including sub-folders.</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={() => folderToDelete && deleteFolderCascading(folderToDelete)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Delete All</AlertDialogAction>
-          </AlertDialogFooter>
+          <AlertDialogHeader><AlertDialogTitle>Are you sure?</AlertDialogTitle><AlertDialogDescription>This will permanently delete the folder and its content.</AlertDialogDescription></AlertDialogHeader>
+          <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => folderToDelete && deleteFolderCascading(folderToDelete)} className="bg-destructive hover:bg-destructive/90">Delete All</AlertDialogAction></AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
       <AlertDialog open={!!noteToDelete} onOpenChange={(open) => !open && setNoteToDelete(null)}>
         <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-            <AlertDialogDescription>This will permanently delete this notebook and all its content.</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={() => noteToDelete && confirmDeleteNote(noteToDelete)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Delete Notebook</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <AlertDialog open={!!folderToDownload} onOpenChange={(open) => !open && setFolderToDownload(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>¿Seguro que quieres descargar todo el contenido de la carpeta?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Se descargará un archivo con toda la información de "{folderToDownload?.name}", incluyendo sus notas (notebook, chat y quiz) y subcarpetas.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={() => folderToDownload && handleExportFolder(folderToDownload)} className="bg-primary text-primary-foreground hover:bg-primary/90">Descargar Todo</AlertDialogAction>
-          </AlertDialogFooter>
+          <AlertDialogHeader><AlertDialogTitle>Are you sure?</AlertDialogTitle><AlertDialogDescription>Delete this notebook?</AlertDialogDescription></AlertDialogHeader>
+          <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => noteToDelete && confirmDeleteNote(noteToDelete)} className="bg-destructive hover:bg-destructive/90">Delete Notebook</AlertDialogAction></AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </aside>
