@@ -2805,18 +2805,7 @@ const QuizView = ({
               </div>
             )}
 
-            {editForm.type === 'blocking' && (
-              <div className="space-y-6">
-                <div className="space-y-4 text-left">
-                  <Label className="text-sm font-bold text-white uppercase italic tracking-tight">Clue / Theme</Label>
-                  <Textarea value={editForm.question} onChange={(e) => setEditForm({...editForm, question: e.target.value})} placeholder="What the user needs to reconstruct (e.g. 'Photosynthesis')" className="min-h-[100px] bg-[#111] border-2 border-white/5 focus:border-primary/50 rounded-xl p-4 text-sm font-medium" />
-                </div>
-                <div className="space-y-4 text-left">
-                  <Label className="text-sm font-bold text-white uppercase italic tracking-tight">Correct Sequence (The Word)</Label>
-                  <Input value={editForm.correctAnswer} onChange={(e) => setEditForm({...editForm, correctAnswer: e.target.value})} placeholder="THE WORD..." className="h-11 bg-[#111] border-2 border-white/5 focus:border-primary/50 rounded-xl px-4 font-black text-[10px] uppercase italic" />
-                </div>
-              </div>
-            )}
+
 
 
 

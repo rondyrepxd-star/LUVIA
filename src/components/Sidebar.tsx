@@ -257,7 +257,7 @@ const Sidebar = ({
     document.body.removeChild(a);
     setFolderToDownload(null);
   };
-  const truncateName = (name: string) => name.length > 17 ? name.substring(0, 17) + '...' : name;
+
 
   if (isCollapsed) {
     return (
@@ -322,11 +322,11 @@ const Sidebar = ({
                 onClick={(e) => e.stopPropagation()}
               />
             ) : (
-              <span className="text-xs truncate flex-1">{truncateName(note.title)}</span>
+              <span className="text-xs truncate flex-1 min-w-0 font-medium">{note.title}</span>
             )}
-            <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 group-hover/note:opacity-100 transition-all">
-               <button onClick={(e) => { e.stopPropagation(); setNoteToEdit(note); }} className="p-1.5 hover:bg-primary/20 text-muted-foreground hover:text-primary rounded-full transition-colors"><Pencil size={11} /></button>
-               <button onClick={(e) => { e.stopPropagation(); setNoteToDelete(note.id); }} className="p-1.5 hover:bg-destructive/20 text-muted-foreground hover:text-destructive rounded-full transition-colors"><Trash2 size={11} /></button>
+            <div className="flex items-center gap-1 opacity-0 group-hover/note:opacity-100 transition-all ml-auto shrink-0 pl-2">
+               <button onClick={(e) => { e.stopPropagation(); setNoteToEdit(note); }} className="p-1 px-1.5 hover:bg-primary/20 text-muted-foreground hover:text-primary rounded-lg transition-colors"><Pencil size={11} /></button>
+               <button onClick={(e) => { e.stopPropagation(); setNoteToDelete(note.id); }} className="p-1 px-1.5 hover:bg-destructive/20 text-muted-foreground hover:text-destructive rounded-lg transition-colors"><Trash2 size={11} /></button>
             </div>
           </div>
         ))}
@@ -358,15 +358,14 @@ const Sidebar = ({
               {editingId === sub.id ? (
                 <input ref={editInputRef} value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={saveEdit} onKeyDown={handleKeyDown} className="bg-background border border-primary text-xs px-1 rounded outline-none w-full" onClick={(e) => e.stopPropagation()} />
               ) : (
-                <span className="text-sm font-medium truncate flex-1">{truncateName(sub.name)}</span>
+              <span className="text-sm font-bold truncate flex-1 min-w-0">{sub.name}</span>
               )}
-              
-              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 group-hover/folder:opacity-100 transition-all">
-                <button onClick={(e) => { e.stopPropagation(); handleNewNoteClick(sub.id); }} className="p-1 px-1.5 hover:bg-primary/20 text-muted-foreground hover:text-primary rounded-full transition-colors" title="New Note"><Plus size={11} /></button>
-                <button onClick={(e) => { e.stopPropagation(); setFolderToDownload(sub); }} className="p-1 px-1.5 hover:bg-primary/20 text-muted-foreground hover:text-primary rounded-full transition-colors" title="Download Folder"><Download size={11} /></button>
-                <button onClick={(e) => { e.stopPropagation(); handleNewFolderClick(sub.id); }} className="p-1 px-1.5 hover:bg-primary/20 text-muted-foreground hover:text-primary rounded-full transition-colors" title="New Sub-folder"><FolderDown size={11} /></button>
-                <button onClick={(e) => { e.stopPropagation(); setFolderToEdit(sub); }} className="p-1 px-1.5 hover:bg-primary/20 text-muted-foreground hover:text-primary rounded-full transition-colors" title="Edit Folder"><Pencil size={11} /></button>
-                <button onClick={(e) => { e.stopPropagation(); setFolderToDelete(sub.id); }} className="p-1 px-1.5 hover:bg-destructive/20 text-muted-foreground hover:text-destructive rounded-full transition-colors" title="Delete"><Trash2 size={11} /></button>
+              <div className="flex items-center gap-0.5 opacity-0 group-hover/folder:opacity-100 transition-all ml-auto shrink-0 pl-2">
+                <button onClick={(e) => { e.stopPropagation(); handleNewNoteClick(sub.id); }} className="p-1 px-1.5 hover:bg-primary/20 text-white/40 hover:text-primary rounded-lg transition-colors" title="New Note"><Plus size={11} /></button>
+                <button onClick={(e) => { e.stopPropagation(); setFolderToDownload(sub); }} className="p-1 px-1.5 hover:bg-primary/20 text-white/40 hover:text-primary rounded-lg transition-colors" title="Download Folder"><Download size={11} /></button>
+                <button onClick={(e) => { e.stopPropagation(); handleNewFolderClick(sub.id); }} className="p-1 px-1.5 hover:bg-primary/20 text-white/40 hover:text-primary rounded-lg transition-colors" title="New Sub-folder"><FolderDown size={11} /></button>
+                <button onClick={(e) => { e.stopPropagation(); setFolderToEdit(sub); }} className="p-1 px-1.5 hover:bg-primary/20 text-white/40 hover:text-primary rounded-lg transition-colors" title="Edit Folder"><Pencil size={11} /></button>
+                <button onClick={(e) => { e.stopPropagation(); setFolderToDelete(sub.id); }} className="p-1 px-1.5 hover:bg-destructive/20 text-white/40 hover:text-destructive rounded-lg transition-colors" title="Delete"><Trash2 size={11} /></button>
               </div>
             </div>
             {sub.isOpen && renderFolderItems(sub.id, depth + 1)}
@@ -422,14 +421,14 @@ const Sidebar = ({
                    >
                      <NoteIcon iconName={folder.icon} size={14} />
                    </div>
-                   <span className="text-sm font-medium truncate flex-1">{truncateName(folder.name)}</span>
+                   <span className="text-sm font-bold truncate flex-1 min-w-0">{folder.name}</span>
                    
-                   <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 group-hover/folder:opacity-100 transition-all">
-                      <button onClick={(e) => { e.stopPropagation(); handleNewNoteClick(folder.id); }} className="p-1 px-1.5 hover:bg-primary/20 text-muted-foreground hover:text-primary rounded-full transition-colors" title="New Note"><Plus size={11} /></button>
-                      <button onClick={(e) => { e.stopPropagation(); setFolderToDownload(folder); }} className="p-1 px-1.5 hover:bg-primary/20 text-muted-foreground hover:text-primary rounded-full transition-colors" title="Download Folder"><Download size={11} /></button>
-                      <button onClick={(e) => { e.stopPropagation(); handleNewFolderClick(folder.id); }} className="p-1 px-1.5 hover:bg-primary/20 text-muted-foreground hover:text-primary rounded-full transition-colors" title="New Sub-folder"><FolderDown size={11} /></button>
-                      <button onClick={(e) => { e.stopPropagation(); setFolderToEdit(folder); }} className="p-1 px-1.5 hover:bg-primary/20 text-muted-foreground hover:text-primary rounded-full transition-colors" title="Edit Folder"><Pencil size={11} /></button>
-                      <button onClick={(e) => { e.stopPropagation(); setFolderToDelete(folder.id); }} className="p-1 px-1.5 hover:bg-destructive/20 text-muted-foreground hover:text-destructive rounded-full transition-colors" title="Delete"><Trash2 size={11} /></button>
+                   <div className="flex items-center gap-0.5 opacity-0 group-hover/folder:opacity-100 transition-all ml-auto shrink-0 pl-2">
+                      <button onClick={(e) => { e.stopPropagation(); handleNewNoteClick(folder.id); }} className="p-1 px-1.5 hover:bg-primary/20 text-white/40 hover:text-primary rounded-lg transition-colors" title="New Note"><Plus size={11} /></button>
+                      <button onClick={(e) => { e.stopPropagation(); setFolderToDownload(folder); }} className="p-1 px-1.5 hover:bg-primary/20 text-white/40 hover:text-primary rounded-lg transition-colors" title="Download Folder"><Download size={11} /></button>
+                      <button onClick={(e) => { e.stopPropagation(); handleNewFolderClick(folder.id); }} className="p-1 px-1.5 hover:bg-primary/20 text-white/40 hover:text-primary rounded-lg transition-colors" title="New Sub-folder"><FolderDown size={11} /></button>
+                      <button onClick={(e) => { e.stopPropagation(); setFolderToEdit(folder); }} className="p-1 px-1.5 hover:bg-primary/20 text-white/40 hover:text-primary rounded-lg transition-colors" title="Edit Folder"><Pencil size={11} /></button>
+                      <button onClick={(e) => { e.stopPropagation(); setFolderToDelete(folder.id); }} className="p-1 px-1.5 hover:bg-destructive/20 text-white/40 hover:text-destructive rounded-lg transition-colors" title="Delete"><Trash2 size={11} /></button>
                    </div>
                 </div>
                 {folder.isOpen && renderFolderItems(folder.id)}
@@ -449,7 +448,11 @@ const Sidebar = ({
                   >
                     <NoteIcon iconName={note.icon} size={14} />
                   </div>
-                 <span className="text-sm truncate flex-1">{truncateName(note.title)}</span>
+                 <span className="text-sm truncate flex-1 min-w-0 font-medium">{note.title}</span>
+                 <div className="flex items-center gap-1 opacity-0 group-hover/note:opacity-100 transition-all ml-auto shrink-0 pl-2">
+                    <button onClick={(e) => { e.stopPropagation(); setNoteToEdit(note); }} className="p-1 px-1.5 hover:bg-primary/20 text-white/40 hover:text-primary rounded-lg transition-colors"><Pencil size={11} /></button>
+                    <button onClick={(e) => { e.stopPropagation(); setNoteToDelete(note.id); }} className="p-1 px-1.5 hover:bg-destructive/20 text-white/40 hover:text-destructive rounded-lg transition-colors"><Trash2 size={11} /></button>
+                 </div>
               </div>
             ))}
           </div>
