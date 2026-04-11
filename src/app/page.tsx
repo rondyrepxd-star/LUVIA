@@ -101,6 +101,40 @@ export default function LuviaApp() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isFocusMode, setIsFocusMode] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(260);
+  const [isResizing, setIsResizing] = useState(false);
+
+  const startResizing = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizing(true);
+  };
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizing) return;
+      let newWidth = e.clientX;
+      if (newWidth < 180) newWidth = 180;
+      if (newWidth > 600) newWidth = 600;
+      setSidebarWidth(newWidth);
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+    };
+
+    if (isResizing) {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = 'col-resize';
+    } else {
+      document.body.style.cursor = 'default';
+    }
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isResizing]);
   const [appTheme, setAppTheme] = useState('default');
   const [notebookFont, setNotebookFont] = useState<'sans' | 'serif' | 'mono'>('sans');
   const [notebookFontSize, setNotebookFontSize] = useState(18);
@@ -579,7 +613,13 @@ export default function LuviaApp() {
           </div>
         )}
 
-        <div className={cn("transition-all duration-300 overflow-hidden shrink-0 z-40 bg-[#0d0d0f] md:bg-transparent absolute inset-y-0 left-0 md:relative", isSidebarCollapsed ? "-translate-x-full md:translate-x-0 md:w-12" : "translate-x-0 w-64 md:w-64")}>
+        <div 
+          className={cn(
+            "transition-all duration-300 overflow-hidden shrink-0 z-40 bg-[#0d0d0f] md:bg-transparent absolute inset-y-0 left-0 md:relative group/sidebar", 
+            isSidebarCollapsed ? "-translate-x-full md:translate-x-0 md:w-12" : "translate-x-0"
+          )}
+          style={{ width: isSidebarCollapsed ? undefined : `${sidebarWidth}px` }}
+        >
           <Sidebar 
             notes={notes}
             folders={folders}
@@ -595,6 +635,14 @@ export default function LuviaApp() {
             activeTab={activeTab}
             onTabChange={handleTabChange}
           />
+          
+          {/* Resize handle */}
+          {!isSidebarCollapsed && (
+            <div 
+              onMouseDown={startResizing}
+              className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/50 transition-colors z-50 group-hover/sidebar:bg-white/5"
+            />
+          )}
         </div>
         
         <div className="flex-1 flex flex-col min-w-0 relative h-full">
