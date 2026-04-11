@@ -322,7 +322,9 @@ const Sidebar = ({
                 onClick={(e) => e.stopPropagation()}
               />
             ) : (
-              <span className="text-xs truncate flex-1 min-w-0 font-medium">{note.title}</span>
+              <span className="text-xs truncate flex-1 min-w-0 font-medium">
+                {note.title.length > 20 ? `${note.title.substring(0, 20)}...` : note.title}
+              </span>
             )}
             <div className="flex items-center gap-0.5 shrink-0 pl-1 border-l border-white/5 ml-1">
                <button onClick={(e) => { e.stopPropagation(); setNoteToEdit(note); }} className="w-6 h-6 flex items-center justify-center hover:bg-primary/20 text-muted-foreground hover:text-primary rounded-md transition-colors"><Pencil size={10} /></button>
@@ -358,7 +360,9 @@ const Sidebar = ({
               {editingId === sub.id ? (
                 <input ref={editInputRef} value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={saveEdit} onKeyDown={handleKeyDown} className="bg-background border border-primary text-xs px-1 rounded outline-none w-full" onClick={(e) => e.stopPropagation()} />
               ) : (
-              <span className="text-sm font-bold truncate flex-1 min-w-0">{sub.name}</span>
+              <span className="text-sm font-bold truncate flex-1 min-w-0">
+                {sub.name.length > 20 ? `${sub.name.substring(0, 20)}...` : sub.name}
+              </span>
               )}
               <div className="flex items-center gap-0.5 shrink-0 pl-1 border-l border-white/5 ml-1">
                 <button onClick={(e) => { e.stopPropagation(); handleNewNoteClick(sub.id); }} className="w-6 h-6 flex items-center justify-center hover:bg-primary/20 text-white/40 hover:text-primary rounded-md transition-colors" title="New Note"><Plus size={10} /></button>
@@ -421,7 +425,9 @@ const Sidebar = ({
                    >
                      <NoteIcon iconName={folder.icon} size={14} />
                    </div>
-                   <span className="text-sm font-bold truncate flex-1 min-w-0">{folder.name}</span>
+                   <span className="text-sm font-bold truncate flex-1 min-w-0">
+                     {folder.name.length > 20 ? `${folder.name.substring(0, 20)}...` : folder.name}
+                   </span>
                    
                    <div className="flex items-center gap-0.5 shrink-0 pl-1 border-l border-white/5 ml-1">
                       <button onClick={(e) => { e.stopPropagation(); handleNewNoteClick(folder.id); }} className="w-6 h-6 flex items-center justify-center hover:bg-primary/20 text-white/40 hover:text-primary rounded-md transition-colors" title="New Note"><Plus size={10} /></button>
@@ -448,7 +454,9 @@ const Sidebar = ({
                   >
                     <NoteIcon iconName={note.icon} size={14} />
                   </div>
-                 <span className="text-sm truncate flex-1 min-w-0 font-medium">{note.title}</span>
+                 <span className="text-sm truncate flex-1 min-w-0 font-medium">
+                   {note.title.length > 20 ? `${note.title.substring(0, 20)}...` : note.title}
+                 </span>
                  <div className="flex items-center gap-1 shrink-0 pl-1 border-l border-white/5 ml-1">
                     <button onClick={(e) => { e.stopPropagation(); setNoteToEdit(note); }} className="w-6 h-6 flex items-center justify-center hover:bg-primary/20 text-white/40 hover:text-primary rounded-md transition-colors"><Pencil size={10} /></button>
                     <button onClick={(e) => { e.stopPropagation(); setNoteToDelete(note.id); }} className="w-6 h-6 flex items-center justify-center hover:bg-destructive/20 text-white/40 hover:text-destructive rounded-md transition-colors"><Trash2 size={10} /></button>
