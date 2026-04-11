@@ -234,11 +234,11 @@ const Sidebar = ({
   const handleNewNoteClick = (folderId?: string) => {
     if (folderId) setFolders(prev => prev.map(f => f.id === folderId ? { ...f, isOpen: true } : f));
     const newId = onCreateNote(folderId);
-    setTimeout(() => startEditing(newId, 'New Note'), 50);
+    setTimeout(() => startEditing(newId, 'New Note'), 100);
   };
   const handleNewFolderClick = (parentId?: string) => {
     const newId = onCreateFolder(parentId);
-    setTimeout(() => startEditing(newId, parentId ? 'New Sub-collection' : 'New Collection'), 50);
+    setTimeout(() => startEditing(newId, parentId ? 'New Sub-collection' : 'New Collection'), 100);
   };
   const handleExportFolder = (folder: FolderType) => {
     const collectData = (currentFolder: FolderType): any => ({
@@ -299,7 +299,15 @@ const Sidebar = ({
             {dragOverId === note.id && dropPosition === 'above' && <div className="absolute -top-[1px] left-0 right-0 h-[2px] bg-primary z-50 rounded-full" />}
             {dragOverId === note.id && dropPosition === 'below' && <div className="absolute -bottom-[1px] left-0 right-0 h-[2px] bg-primary z-50 rounded-full" />}
             {activeNoteId === note.id && <div className="absolute left-[-10px] top-1/2 -translate-y-1/2 w-1 h-4 bg-primary rounded-full" />}
-            <div className={cn("w-6 h-6 rounded-lg flex items-center justify-center shrink-0 shadow-sm", activeNoteId === note.id ? "bg-primary text-primary-foreground" : "bg-white/5")}>
+            <div 
+              className={cn("w-6 h-6 rounded-lg flex items-center justify-center shrink-0 shadow-sm transition-colors", activeNoteId === note.id ? "bg-primary text-primary-foreground" : "bg-white/5")}
+              style={{ 
+                backgroundColor: activeNoteId === note.id ? undefined : (note.color ? `${note.color}15` : undefined),
+                color: activeNoteId === note.id ? undefined : (note.color || undefined),
+                borderColor: note.color ? `${note.color}30` : undefined,
+                borderWidth: note.color ? '1px' : '0px'
+              }}
+            >
               <NoteIcon iconName={note.icon} size={12} />
               {note.quiz && <SparklesIcon size={8} className="absolute -top-1 -right-1 text-primary animate-pulse" />}
             </div>
@@ -336,7 +344,17 @@ const Sidebar = ({
               {dragOverId === sub.id && dropPosition === 'above' && <div className="absolute -top-[1px] left-0 right-0 h-[2px] bg-primary z-50 rounded-full" />}
               {dragOverId === sub.id && dropPosition === 'below' && <div className="absolute -bottom-[1px] left-0 right-0 h-[2px] bg-primary z-50 rounded-full" />}
               {sub.isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-              <NoteIcon iconName={sub.icon} size={14} />
+              <div 
+                className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0 shadow-sm transition-colors"
+                style={{ 
+                  backgroundColor: sub.color ? `${sub.color}15` : 'rgba(255,255,255,0.05)',
+                  color: sub.color || 'inherit',
+                  borderColor: sub.color ? `${sub.color}30` : 'transparent',
+                  borderWidth: '1px'
+                }}
+              >
+                <NoteIcon iconName={sub.icon} size={14} />
+              </div>
               {editingId === sub.id ? (
                 <input ref={editInputRef} value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={saveEdit} onKeyDown={handleKeyDown} className="bg-background border border-primary text-xs px-1 rounded outline-none w-full" onClick={(e) => e.stopPropagation()} />
               ) : (
@@ -393,7 +411,17 @@ const Sidebar = ({
                    {dragOverId === folder.id && dropPosition === 'above' && <div className="absolute -top-[1px] left-0 right-0 h-[2px] bg-primary z-50 rounded-full shadow-[0_0_8px_rgba(59,130,246,0.5)]" />}
                    {dragOverId === folder.id && dropPosition === 'below' && <div className="absolute -bottom-[1px] left-0 right-0 h-[2px] bg-primary z-50 rounded-full shadow-[0_0_8px_rgba(59,130,246,0.5)]" />}
                    {folder.isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                   <NoteIcon iconName={folder.icon} size={14} />
+                   <div 
+                     className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0 shadow-sm transition-colors"
+                     style={{ 
+                       backgroundColor: folder.color ? `${folder.color}15` : 'rgba(255,255,255,0.05)',
+                       color: folder.color || 'inherit',
+                       borderColor: folder.color ? `${folder.color}30` : 'transparent',
+                       borderWidth: '1px'
+                     }}
+                   >
+                     <NoteIcon iconName={folder.icon} size={14} />
+                   </div>
                    <span className="text-sm font-medium truncate flex-1">{truncateName(folder.name)}</span>
                    
                    <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 group-hover/folder:opacity-100 transition-all">
@@ -409,8 +437,18 @@ const Sidebar = ({
             ))}
             {filteredNotes.filter(n => !n.folderId).map((note) => (
               <div key={note.id} draggable onDragStart={(e) => handleNoteDragStart(e, note.id)} onClick={() => onSelectNote(note.id)} className={cn("relative flex items-center gap-1.5 px-3 py-2 rounded-xl cursor-pointer transition-all", activeNoteId === note.id ? "bg-[#252525] text-foreground font-bold" : "text-muted-foreground hover:bg-[#202020]")}>
-                 {activeNoteId === note.id && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 bg-primary rounded-full" />}
-                 <NoteIcon iconName={note.icon} size={14} />
+                  {activeNoteId === note.id && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 bg-primary rounded-full" />}
+                  <div 
+                    className={cn("w-6 h-6 rounded-lg flex items-center justify-center shrink-0 shadow-sm transition-colors", activeNoteId === note.id ? "bg-primary text-primary-foreground" : "")}
+                    style={{ 
+                      backgroundColor: activeNoteId === note.id ? undefined : (note.color ? `${note.color}15` : 'rgba(255,255,255,0.05)'),
+                      color: activeNoteId === note.id ? undefined : (note.color || 'inherit'),
+                      borderColor: note.color ? `${note.color}30` : 'transparent',
+                      borderWidth: '1px'
+                    }}
+                  >
+                    <NoteIcon iconName={note.icon} size={14} />
+                  </div>
                  <span className="text-sm truncate flex-1">{truncateName(note.title)}</span>
               </div>
             ))}

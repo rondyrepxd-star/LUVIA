@@ -190,6 +190,19 @@ const FloatingMenu = ({
   const activeHighlightRef = useRef<HTMLElement | null>(null);
   const prevMoveModeRef = useRef(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const clickOutsideRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (isAnchored) return;
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        onClose();
+        setIsNoteOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [onClose, isAnchored]);
 
   useEffect(() => {
     if (!isAnchored && menuRef.current) {
@@ -606,15 +619,22 @@ const FloatingMenu = ({
         onMouseDown={(e) => e.stopPropagation()}
       >
         {!isNoteOpen && (
-          <div 
-            className={cn(
-              "bg-[#121212] border border-white/10 rounded-full p-0.5 mb-[-8px] z-20 shadow-xl cursor-pointer hover:bg-white/5 transition-colors",
-              isAnchored && "rotate-180 mb-0 mt-[-8px] opacity-20 hover:opacity-100"
-            )}
-            onClick={onToggleAnchor}
-          >
-            <ChevronUp size={12} className="text-white/40" />
-          </div>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button 
+                onClick={onToggleAnchor}
+                className={cn(
+                  "bg-[#121212] border border-white/10 rounded-full p-2 mb-[-12px] z-20 shadow-xl transition-all hover:scale-110",
+                  isAnchored ? "bg-primary border-primary/50 text-primary-foreground transform rotate-45" : "text-white/40 hover:text-white hover:bg-white/5"
+                )}
+              >
+                {isAnchored ? <LinkIcon size={12} className="rotate-[-45deg]" /> : <Anchor size={12} />}
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="bg-black text-[9px] font-black uppercase italic tracking-widest border-white/10">
+              {isAnchored ? "Desanclar Menú" : "Anclar a la barra superior"}
+            </TooltipContent>
+          </Tooltip>
         )}
 
         {isNoteOpen ? (
@@ -684,7 +704,7 @@ const FloatingMenu = ({
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
                   <button 
-                    onClick={(e) => { e.stopPropagation(); onClose(); }} 
+                    onClick={(e) => { e.stopPropagation(); setIsNoteOpen(false); onClose(); }} 
                     className="text-white/20 hover:text-white transition-colors p-1 ml-1"
                   >
                     <X size={16} />

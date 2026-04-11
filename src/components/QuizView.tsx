@@ -35,7 +35,8 @@ import {
   BoxSelect,
   HelpCircle,
   ArrowRight,
-  GripVertical
+  GripVertical,
+  Layout
 } from 'lucide-react';
 import { GenerateQuizOutput } from '@/ai/flows/generate-quiz-flow';
 import { Button } from '@/components/ui/button';
@@ -227,6 +228,7 @@ const QuizView = ({
   const [selectedLeftId, setSelectedLeftId] = useState<number | null>(null);
   const [blockingChars, setBlockingChars] = useState<string[]>([]);
   const [blockingSuccess, setBlockingSuccess] = useState(false);
+  const [isMatchingSwapped, setIsMatchingSwapped] = useState(false);
 
   const bgAudioRef = useRef<HTMLAudioElement | null>(null);
   const questionAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -247,6 +249,8 @@ const QuizView = ({
     back: '',
     matchingPairs: [{ prompt: '', match: '' }],
     orderingSteps: ['', '', ''],
+    blockingCorrectWords: [],
+    blockingPhantomWords: [],
     acceptableAnswers: [],
     caseSensitive: false,
     audioUrl: '',
@@ -258,15 +262,12 @@ const QuizView = ({
   useEffect(() => {
     const currentQuestion = sessionQuestions[currentQuestionIndex];
     if (currentQuestion?.type === 'blocking') {
-      const word = currentQuestion.correctAnswer || '';
-      // Ensure we don't shuffle into the correct order
-      let shuffled = shuffleArray(word.split(''));
-      while (shuffled.join('') === word && word.length > 1) {
-        shuffled = shuffleArray(word.split(''));
-      }
-      setBlockingChars(shuffled);
+      const correct = currentQuestion.blockingCorrectWords || [];
+      const phantoms = currentQuestion.blockingPhantomWords || [];
+      const pool = shuffleArray([...correct, ...phantoms]);
+      setBlockingChars(pool); // Reusing blockingChars as word pool
       setBlockingSuccess(false);
-      setUserAnswers(prev => ({ ...prev, [currentQuestionIndex]: shuffled.join('') }));
+      setUserAnswers(prev => ({ ...prev, [currentQuestionIndex]: [] }));
     }
   }, [currentQuestionIndex, sessionQuestions]);
 
@@ -641,7 +642,7 @@ const QuizView = ({
       case 'multiple_choice':
       case 'true_false':
       case 'blocking':
-        return normalize(answer) === normalize(q.correctAnswer);
+        return JSON.stringify(answer) === JSON.stringify(q.blockingCorrectWords || []);
       case 'short_answer':
         const primaryMatch = normalize(answer) === normalize(q.correctAnswer);
         const altMatch = q.acceptableAnswers?.some((alt: string) => normalize(alt) === normalize(answer));
@@ -1432,12 +1433,23 @@ const QuizView = ({
                       )}
 
                       {currentQuestion.type === 'matching' && (
-                        <div className="space-y-8 py-4">
-                          <p className="text-center text-white/40 text-[10px] font-bold uppercase tracking-widest italic mb-2">Click an item on the left, then click its match on the right</p>
-                          <div className="grid grid-cols-2 gap-6 relative items-start">
-                            {/* Left Column (Static) */}
+                        <div className="space-y-6 max-w-4xl mx-auto py-8">
+                          <div className="flex items-center justify-between mb-4">
+                             <p className="text-white/40 text-[10px] font-bold uppercase tracking-widest italic">Select a {isMatchingSwapped ? 'match' : 'prompt'} then its {isMatchingSwapped ? 'prompt' : 'match'}</p>
+                             <Button 
+                               variant="ghost" 
+                               size="sm" 
+                               onClick={() => setIsMatchingSwapped(!isMatchingSwapped)}
+                               className="h-8 border border-white/5 bg-white/5 text-white/20 hover:text-white rounded-lg gap-2 text-[9px] font-black uppercase italic tracking-widest"
+                             >
+                               <ArrowRightLeft size={10} /> Swap Sides
+                             </Button>
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 relative items-start">
+                            {/* Left Column (Prompts) */}
                             <div className="space-y-3">
-                              {currentQuestion.matchingPairs?.map((pair: any, i: number) => {
+                              {currentQuestion.matchingPairs.map((pair: any, i: number) => {
+                                const leftVal = isMatchingSwapped ? pair.match : pair.prompt;
                                 const currentAnswers = userAnswers[currentQuestionIndex] || {};
                                 const isMatched = currentAnswers[i] !== undefined;
                                 const isSelected = selectedLeftId === i;
@@ -1475,7 +1487,7 @@ const QuizView = ({
                                           {i + 1}
                                         </div>
                                       )}
-                                      <span className="font-black text-[11px] uppercase tracking-tight">{pair.prompt}</span>
+                                      <span className="font-black text-[11px] uppercase tracking-tight">{leftVal}</span>
                                     </div>
                                   </button>
                                 );
@@ -1485,9 +1497,12 @@ const QuizView = ({
                             {/* Right Column (Definitions - Shuffled once) */}
                             <div className="space-y-3">
                               {matchingShuffledRight.map((pair: any, idx: number) => {
+                                const rightVal = isMatchingSwapped ? pair.prompt : pair.match;
+                                const leftMatch = isMatchingSwapped ? pair.match : pair.prompt;
+                                
                                 const currentAnswers = userAnswers[currentQuestionIndex] || {};
                                 // Find which left item matched this right item
-                                const matchedLeftEntry = Object.entries(currentAnswers).find(([_, val]) => val === pair.match);
+                                const matchedLeftEntry = Object.entries(currentAnswers).find(([_, val]) => val === rightVal);
                                 const matchedLeftIdx = matchedLeftEntry ? parseInt(matchedLeftEntry[0]) : null;
                                 const isUsed = matchedLeftIdx !== null;
                                 
@@ -1505,7 +1520,7 @@ const QuizView = ({
                                         setUserAnswers({ ...userAnswers, [currentQuestionIndex]: next });
                                       } else if (selectedLeftId !== null) {
                                         // Match current selection
-                                        const next = { ...currentAnswers, [selectedLeftId]: pair.match };
+                                        const next = { ...currentAnswers, [selectedLeftId]: rightVal };
                                         setUserAnswers({ ...userAnswers, [currentQuestionIndex]: next });
                                         setSelectedLeftId(null);
                                       }
@@ -1514,7 +1529,7 @@ const QuizView = ({
                                       "w-full text-left p-4 rounded-[1.2rem] border-2 transition-all flex items-center justify-between min-h-[60px]",
                                       isUsed 
                                         ? (hasVerified 
-                                            ? (currentQuestion.matchingPairs[matchedLeftIdx!].match === pair.match ? "border-green-500 bg-green-500/10 text-green-500" : "border-destructive bg-destructive/10 text-destructive")
+                                            ? (currentQuestion.matchingPairs[matchedLeftIdx!][isMatchingSwapped ? 'prompt' : 'match'] === rightVal ? "border-green-500 bg-green-500/10 text-green-500" : "border-destructive bg-destructive/10 text-destructive")
                                             : "border-primary/40 bg-primary/5")
                                         : (selectedLeftId !== null ? "border-primary/20 bg-primary/[0.02] hover:border-primary/50" : "border-white/5 bg-white/[0.01]")
                                     )}
@@ -1525,7 +1540,7 @@ const QuizView = ({
                                           {matchedLeftIdx! + 1}
                                         </div>
                                       )}
-                                      <span className="font-black text-[11px] uppercase tracking-tight">{pair.match}</span>
+                                      <span className="font-black text-[11px] uppercase tracking-tight">{rightVal}</span>
                                     </div>
                                   </button>
                                 );
@@ -1652,73 +1667,84 @@ const QuizView = ({
                       )}
 
                       {currentQuestion.type === 'blocking' && (
-                        <div className="flex flex-col items-center space-y-12 py-10">
-                          <h2 className="text-xl font-black uppercase italic tracking-tighter text-white/30 tracking-[0.2em]">Deconstruct & Rebuild Sequence:</h2>
+                        <div className="flex flex-col items-center space-y-12 py-10 w-full max-w-4xl mx-auto">
+                          <h2 className="text-xl font-black uppercase italic tracking-tighter text-white/30 tracking-[0.2em]">Construct the Neural Sentence:</h2>
                           
-                          <div className="flex flex-wrap justify-center gap-4 py-12 px-8 min-h-[180px] w-full bg-[#050505] rounded-[3rem] border-2 border-white/5 relative shadow-[inset_0_4px_40px_rgba(0,0,0,0.8)]">
-                            {blockingChars.map((char, i) => (
-                              <div
-                                key={`block-${i}`}
-                                draggable={!hasVerified && !blockingSuccess}
-                                onDragStart={(e) => {
-                                  e.dataTransfer.setData('sourceIndex', i.toString());
-                                }}
-                                onDragOver={(e) => e.preventDefault()}
-                                onDrop={(e) => {
-                                  e.preventDefault();
-                                  const sourceIndex = parseInt(e.dataTransfer.getData('sourceIndex'));
-                                  if (sourceIndex === i) return;
-
-                                  const nextChars = [...blockingChars];
-                                  const temp = nextChars[sourceIndex];
-                                  nextChars[sourceIndex] = nextChars[i];
-                                  nextChars[i] = temp;
-
-                                  setBlockingChars(nextChars);
-                                  setUserAnswers(prev => ({ ...prev, [currentQuestionIndex]: nextChars.join('') }));
-                                  
-                                  if (nextChars.join('').toLowerCase() === (currentQuestion.correctAnswer || '').toLowerCase()) {
-                                    setBlockingSuccess(true);
-                                    // playSFX('correct'); // Optional
-                                    setTimeout(() => handleVerify(), 800);
-                                  }
+                          {/* Answer Area */}
+                          <div className="w-full min-h-[120px] p-6 rounded-[2.5rem] border-2 border-dashed border-primary/20 bg-primary/5 flex flex-wrap justify-center gap-3 items-center relative transition-shadow duration-500 hover:shadow-[0_0_40px_rgba(var(--primary),0.1)]">
+                            {userAnswers[currentQuestionIndex]?.length === 0 && (
+                              <p className="absolute inset-0 flex items-center justify-center text-[10px] font-black uppercase tracking-[0.4em] text-white/10 italic">Select words from the pool</p>
+                            )}
+                            {(userAnswers[currentQuestionIndex] || []).map((word: string, i: number) => (
+                              <button
+                                key={`ans-${i}`}
+                                onClick={() => {
+                                  if (hasVerified) return;
+                                  const ans = [...(userAnswers[currentQuestionIndex] || [])];
+                                  const pool = [...blockingChars];
+                                  const [removed] = ans.splice(i, 1);
+                                  pool.push(removed);
+                                  setUserAnswers({ ...userAnswers, [currentQuestionIndex]: ans });
+                                  setBlockingChars(pool);
                                 }}
                                 className={cn(
-                                  "w-14 h-20 md:w-18 md:h-24 rounded-2xl border-2 flex items-center justify-center text-3xl font-black transition-all duration-300 cursor-grab active:cursor-grabbing select-none",
-                                  blockingSuccess || (hasVerified && blockingChars.join('').toLowerCase() === currentQuestion.correctAnswer?.toLowerCase())
-                                    ? "bg-emerald-500/10 border-emerald-500 text-emerald-500 shadow-[0_0_40px_rgba(16,185,129,0.4)] animate-in zoom-in-110"
-                                    : "bg-[#111] border-white/5 text-white/80 hover:border-primary/50 hover:shadow-[0_0_20px_rgba(var(--primary),0.3)] hover:scale-105"
+                                  "px-6 py-3 rounded-xl border-2 font-black text-sm uppercase italic transition-all hover:scale-105 active:scale-95",
+                                  hasVerified 
+                                    ? (word === currentQuestion.blockingCorrectWords[i] ? "bg-green-500/10 border-green-500 text-green-500" : "bg-destructive/10 border-destructive text-destructive")
+                                    : "bg-white/10 border-white/20 text-white hover:border-primary/50"
                                 )}
                               >
-                                {char.toUpperCase()}
-                              </div>
+                                {word}
+                              </button>
                             ))}
                           </div>
 
+                          {/* Pool Area */}
+                          <div className="w-full flex flex-wrap justify-center gap-4 py-12 px-8 min-h-[160px] bg-[#050505]/40 rounded-[3rem] border-2 border-white/5 relative">
+                             {blockingChars.map((word, i) => (
+                               <button
+                                 key={`pool-${i}`}
+                                 disabled={hasVerified}
+                                 onClick={() => {
+                                   if (hasVerified) return;
+                                   const pool = [...blockingChars];
+                                   const ans = [...(userAnswers[currentQuestionIndex] || [])];
+                                   const [removed] = pool.splice(i, 1);
+                                   ans.push(removed);
+                                   setBlockingChars(pool);
+                                   setUserAnswers({ ...userAnswers, [currentQuestionIndex]: ans });
+                                 }}
+                                 className="px-6 py-3 rounded-xl border-2 border-white/5 bg-[#111] text-white/80 font-black text-sm uppercase italic transition-all hover:scale-110 hover:border-primary/50 hover:shadow-[0_0_20px_rgba(var(--primary),0.3)] disabled:opacity-50 disabled:cursor-not-allowed"
+                               >
+                                 {word}
+                               </button>
+                             ))}
+                          </div>
+
                           <div className="flex flex-col items-center gap-8">
-                            {(blockingSuccess || hasVerified) && (
-                              <div className="animate-in zoom-in-75 duration-700 flex flex-col items-center gap-3">
-                                <div className="w-16 h-16 rounded-full bg-emerald-500/20 border-4 border-emerald-500 flex items-center justify-center shadow-[0_0_40px_rgba(16,185,129,0.4)]">
-                                  <Check size={32} className="text-emerald-500 stroke-[4]" />
+                            {hasVerified && (
+                              <div className="animate-in zoom-in-75 duration-700 flex flex-col items-center gap-4">
+                                <div className="p-4 bg-white/5 rounded-[1.5rem] border border-white/10 text-left w-full max-w-lg">
+                                   <p className="text-[10px] font-black uppercase tracking-widest text-primary/60 italic mb-2">Target Sequence:</p>
+                                   <p className="text-xl font-black text-white italic lowercase">{currentQuestion.blockingCorrectWords.join(' ')}</p>
                                 </div>
-                                <span className="text-[10px] font-black uppercase tracking-[0.4em] text-emerald-500 italic">NEURAL MATRIX SYNCED</span>
                               </div>
                             )}
 
                             <Button 
                               variant="outline" 
                               onClick={() => {
-                                let word = currentQuestion.correctAnswer || '';
-                                let shuffled = shuffleArray(word.split(''));
-                                while (shuffled.join('') === word && word.length > 1) shuffled = shuffleArray(word.split(''));
-                                setBlockingChars(shuffled);
+                                const correct = currentQuestion.blockingCorrectWords || [];
+                                const phantoms = currentQuestion.blockingPhantomWords || [];
+                                const pool = shuffleArray([...correct, ...phantoms]);
+                                setBlockingChars(pool);
                                 setBlockingSuccess(false);
-                                setUserAnswers(prev => ({ ...prev, [currentQuestionIndex]: shuffled.join('') }));
+                                setUserAnswers(prev => ({ ...prev, [currentQuestionIndex]: [] }));
                               }}
-                              disabled={hasVerified || blockingSuccess}
+                              disabled={hasVerified}
                               className="h-12 px-8 border-2 border-white/5 bg-white/5 text-white/20 hover:text-white hover:border-white/20 rounded-2xl gap-3 font-black text-[10px] uppercase tracking-[0.2em] italic group transition-all"
                             >
-                              <RotateCcw size={14} className="group-hover:rotate-180 transition-transform duration-500" /> RESET DISPLACEMENT
+                              <RotateCcw size={14} className="group-hover:rotate-180 transition-transform duration-500" /> RESET SYNAPSE
                             </Button>
                           </div>
                         </div>
@@ -2410,6 +2436,124 @@ const QuizView = ({
                         <span className="font-black text-xs uppercase italic tracking-widest">{opt}</span>
                       </button>
                     ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {editForm.type === 'blocking' && (
+              <div className="space-y-6">
+                <div className="space-y-4">
+                  <Label className="text-sm font-bold text-white uppercase italic tracking-tight">Challenge Prompt</Label>
+                  <Input 
+                    value={editForm.question} 
+                    onChange={(e) => setEditForm({...editForm, question: e.target.value})} 
+                    placeholder="Translate this, complete the phrase, etc."
+                    className="h-12 bg-white/[0.03] border-2 border-white/5 focus:border-primary/50 rounded-xl px-4 text-sm font-medium"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  {/* Correct Sequence */}
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between mb-2">
+                       <Label className="text-[10px] font-black uppercase tracking-widest text-primary italic">Correct Sequence</Label>
+                       <p className="text-[9px] text-white/30 font-bold uppercase italic">{editForm.blockingCorrectWords?.length || 0} words</p>
+                    </div>
+                    
+                    <div className="flex gap-2">
+                       <Input 
+                         id="new-word-input"
+                         placeholder="Add correct word..." 
+                         className="h-10 bg-white/[0.03] border-2 border-white/5 rounded-xl px-4 text-[11px] font-black uppercase italic"
+                         onKeyDown={(e) => {
+                           if (e.key === 'Enter') {
+                             e.preventDefault();
+                             const val = (e.currentTarget as HTMLInputElement).value.trim();
+                             if (val) {
+                               setEditForm({...editForm, blockingCorrectWords: [...(editForm.blockingCorrectWords || []), val]});
+                               (e.currentTarget as HTMLInputElement).value = '';
+                             }
+                           }
+                         }}
+                       />
+                       <Button 
+                         onClick={() => {
+                           const el = document.getElementById('new-word-input') as HTMLInputElement;
+                           const val = el.value.trim();
+                           if (val) {
+                             setEditForm({...editForm, blockingCorrectWords: [...(editForm.blockingCorrectWords || []), val]});
+                             el.value = '';
+                           }
+                         }}
+                         className="bg-primary rounded-xl h-10 px-4 font-black uppercase italic text-[10px]"
+                       >
+                         ADD
+                       </Button>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2 p-4 bg-white/[0.02] border border-dashed border-white/10 rounded-2xl min-h-[60px]">
+                       {(editForm.blockingCorrectWords || []).map((word: string, i: number) => (
+                         <Badge key={`cw-${i}`} className="bg-primary/20 hover:bg-primary/30 border border-primary/30 px-3 py-1.5 flex items-center gap-2 group transition-all">
+                            <span className="text-[10px] font-black uppercase italic tracking-tighter text-primary">{word}</span>
+                            <button onClick={() => setEditForm({...editForm, blockingCorrectWords: editForm.blockingCorrectWords.filter((_:any,idx:any) => idx !== i)})} className="text-primary/40 hover:text-primary"><X size={12} /></button>
+                         </Badge>
+                       ))}
+                       {(!editForm.blockingCorrectWords || editForm.blockingCorrectWords.length === 0) && (
+                         <p className="text-[9px] font-black text-white/10 uppercase italic mx-auto self-center">No words defined</p>
+                       )}
+                    </div>
+                  </div>
+
+                  {/* Distractors (Phantom) */}
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between mb-2">
+                       <Label className="text-[10px] font-black uppercase tracking-widest text-[#fb7185] italic">Phantom Distractors</Label>
+                       <p className="text-[9px] text-white/30 font-bold uppercase italic">{editForm.blockingPhantomWords?.length || 0} distractors</p>
+                    </div>
+                    
+                    <div className="flex gap-2">
+                       <Input 
+                         id="phantom-word-input"
+                         placeholder="Add distractor..." 
+                         className="h-10 bg-white/[0.03] border-2 border-white/5 rounded-xl px-4 text-[11px] font-black uppercase italic border-[#fb7185]/20"
+                         onKeyDown={(e) => {
+                           if (e.key === 'Enter') {
+                             e.preventDefault();
+                             const val = (e.currentTarget as HTMLInputElement).value.trim();
+                             if (val) {
+                               setEditForm({...editForm, blockingPhantomWords: [...(editForm.blockingPhantomWords || []), val]});
+                               (e.currentTarget as HTMLInputElement).value = '';
+                             }
+                           }
+                         }}
+                       />
+                       <Button 
+                         onClick={() => {
+                           const el = document.getElementById('phantom-word-input') as HTMLInputElement;
+                           const val = el.value.trim();
+                           if (val) {
+                             setEditForm({...editForm, blockingPhantomWords: [...(editForm.blockingPhantomWords || []), val]});
+                             el.value = '';
+                           }
+                         }}
+                         className="bg-[#fb7185] hover:bg-[#fb7185]/90 rounded-xl h-10 px-4 font-black uppercase italic text-[10px]"
+                       >
+                         PHANTOM
+                       </Button>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2 p-4 bg-white/[0.02] border border-dashed border-white/10 rounded-2xl min-h-[60px]">
+                       {(editForm.blockingPhantomWords || []).map((word: string, i: number) => (
+                         <Badge key={`pw-${i}`} className="bg-[#fb7185]/20 hover:bg-[#fb7185]/30 border border-[#fb7185]/30 px-3 py-1.5 flex items-center gap-2 group transition-all">
+                            <span className="text-[10px] font-black uppercase italic tracking-tighter text-[#fb7185]">{word}</span>
+                            <button onClick={() => setEditForm({...editForm, blockingPhantomWords: editForm.blockingPhantomWords.filter((_:any,idx:any) => idx !== i)})} className="text-[#fb7185]/40 hover:text-[#fb7185]"><X size={12} /></button>
+                         </Badge>
+                       ))}
+                       {(!editForm.blockingPhantomWords || editForm.blockingPhantomWords.length === 0) && (
+                         <p className="text-[9px] font-black text-white/10 uppercase italic mx-auto self-center">Clear cache</p>
+                       )}
+                    </div>
                   </div>
                 </div>
               </div>

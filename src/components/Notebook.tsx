@@ -823,7 +823,6 @@ const Notebook = ({
 
             <div
               ref={editorRef}
-              className="editor-content outline-none min-h-[500px]"
               contentEditable
               onInput={handleInput}
               onClick={handleEditorClick}
@@ -1105,7 +1104,7 @@ const Notebook = ({
               spellCheck={spellcheckEnabled}
               style={{ fontSize: `${fontSize}px` }}
               className={cn(
-                "editor-content w-full leading-relaxed min-h-[calc(100vh-320px)] outline-none text-foreground/80",
+                "editor-content w-full leading-relaxed min-h-[calc(100vh-320px)] outline-none text-foreground/80 min-h-[500px]",
                 fontClass
               )}
               data-placeholder="Start typing or paste images..."
