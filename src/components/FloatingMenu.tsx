@@ -14,7 +14,8 @@ import {
   AlignCenter,
   AlignRight,
   AlignJustify,
-  Columns2
+  Columns2,
+  Anchor
 } from 'lucide-react';
 import {
   Tooltip,

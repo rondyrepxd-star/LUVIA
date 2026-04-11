@@ -300,12 +300,12 @@ const Sidebar = ({
             {dragOverId === note.id && dropPosition === 'below' && <div className="absolute -bottom-[1px] left-0 right-0 h-[2px] bg-primary z-50 rounded-full" />}
             {activeNoteId === note.id && <div className="absolute left-[-10px] top-1/2 -translate-y-1/2 w-1 h-4 bg-primary rounded-full" />}
             <div 
-              className={cn("w-6 h-6 rounded-lg flex items-center justify-center shrink-0 shadow-sm transition-colors", activeNoteId === note.id ? "bg-primary text-primary-foreground" : "bg-white/5")}
+              className={cn("w-6 h-6 rounded-lg flex items-center justify-center shrink-0 shadow-sm transition-colors")}
               style={{ 
-                backgroundColor: activeNoteId === note.id ? undefined : (note.color ? `${note.color}15` : undefined),
-                color: activeNoteId === note.id ? undefined : (note.color || undefined),
-                borderColor: note.color ? `${note.color}30` : undefined,
-                borderWidth: note.color ? '1px' : '0px'
+                backgroundColor: note.color ? `${note.color}15` : 'rgba(255,255,255,0.05)',
+                color: note.color || 'inherit',
+                borderColor: activeNoteId === note.id ? (note.color || 'hsl(var(--primary))') : (note.color ? `${note.color}30` : 'transparent'),
+                borderWidth: activeNoteId === note.id ? '2px' : '1px'
               }}
             >
               <NoteIcon iconName={note.icon} size={12} />
@@ -444,12 +444,12 @@ const Sidebar = ({
               <div key={note.id} draggable onDragStart={(e) => handleNoteDragStart(e, note.id)} onClick={() => onSelectNote(note.id)} className={cn("relative flex items-center gap-1.5 px-3 py-2 rounded-xl cursor-pointer transition-all", activeNoteId === note.id ? "bg-[#252525] text-foreground font-bold" : "text-muted-foreground hover:bg-[#202020]")}>
                   {activeNoteId === note.id && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 bg-primary rounded-full" />}
                   <div 
-                    className={cn("w-6 h-6 rounded-lg flex items-center justify-center shrink-0 shadow-sm transition-colors", activeNoteId === note.id ? "bg-primary text-primary-foreground" : "")}
+                    className={cn("w-6 h-6 rounded-lg flex items-center justify-center shrink-0 shadow-sm transition-colors")}
                     style={{ 
-                      backgroundColor: activeNoteId === note.id ? undefined : (note.color ? `${note.color}15` : 'rgba(255,255,255,0.05)'),
-                      color: activeNoteId === note.id ? undefined : (note.color || 'inherit'),
-                      borderColor: note.color ? `${note.color}30` : 'transparent',
-                      borderWidth: '1px'
+                      backgroundColor: note.color ? `${note.color}15` : 'rgba(255,255,255,0.05)',
+                      color: note.color || 'inherit',
+                      borderColor: activeNoteId === note.id ? (note.color || 'hsl(var(--primary))') : (note.color ? `${note.color}30` : 'transparent'),
+                      borderWidth: activeNoteId === note.id ? '2px' : '1px'
                     }}
                   >
                     <NoteIcon iconName={note.icon} size={14} />

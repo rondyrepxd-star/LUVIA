@@ -128,36 +128,55 @@ export const BlockActionMenu = ({ onDelete, onDuplicate, onCopy, onTurnInto, onC
         
         <div className="grid grid-cols-4 gap-3">
           {colors.map(c => (
-            <button
-              key={c.value}
-              onClick={() => onColor(c.value)}
-              onContextMenu={(e) => deleteColor(e, c.value)}
-              className="w-10 h-10 rounded-xl border border-white/5 hover:border-primary/50 transition-all flex items-center justify-center group relative overflow-hidden"
-              style={{ backgroundColor: c.value === 'inherit' ? 'transparent' : c.value + '15' }}
-              title={c.name + ' (Click derecho para borrar)'}
-            >
-              <div 
-                className="w-4 h-4 rounded-full shadow-lg transition-transform group-hover:scale-125 duration-300" 
-                style={{ backgroundColor: c.value === 'inherit' ? 'white' : c.value }}
-              />
-              {c.value !== 'inherit' && (
+            <div key={c.value} className="relative group">
+              <button
+                onClick={() => onColor(c.value)}
+                className="w-10 h-10 rounded-xl border border-white/5 hover:border-primary/50 transition-all flex items-center justify-center relative overflow-hidden"
+                style={{ backgroundColor: c.value === 'inherit' ? 'transparent' : c.value + '15' }}
+                title={c.name}
+              >
                 <div 
-                  className="absolute inset-0 bg-red-500/20 opacity-0 group-hover:opacity-0 group-active:opacity-100 transition-opacity flex items-center justify-center"
-                  onClick={(e) => deleteColor(e, c.value)}
+                  className="w-4 h-4 rounded-full shadow-lg transition-transform group-hover:scale-125 duration-300" 
+                  style={{ backgroundColor: c.value === 'inherit' ? 'white' : c.value }}
+                />
+              </button>
+              
+              {c.value !== 'inherit' && (
+                <button 
+                  className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg z-10"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    deleteColor(e, c.value);
+                  }}
                 >
-                  <X size={12} className="text-red-500" />
-                </div>
+                  <X size={10} className="text-white" />
+                </button>
               )}
-            </button>
+            </div>
           ))}
-          <button
-            onClick={addColor}
-            className="w-10 h-10 rounded-xl border border-dashed border-white/10 hover:border-primary/50 hover:bg-primary/5 transition-all flex items-center justify-center text-white/20 hover:text-primary"
-          >
-            <Plus size={16} />
-          </button>
+          
+          <div className="relative">
+            <button
+              onClick={() => document.getElementById('new-block-color')?.click()}
+              className="w-10 h-10 rounded-xl border border-dashed border-white/10 hover:border-primary/50 hover:bg-primary/5 transition-all flex items-center justify-center text-white/20 hover:text-primary"
+            >
+              <Plus size={16} />
+            </button>
+            <input 
+              id="new-block-color"
+              type="color"
+              className="absolute inset-0 opacity-0 cursor-pointer w-0 h-0"
+              onChange={(e) => {
+                const color = e.target.value;
+                if (color) {
+                  const newColors = [...colors, { name: 'Personalizado', value: color }];
+                  saveColors(newColors);
+                }
+              }}
+            />
+          </div>
         </div>
-        <p className="mt-4 text-[9px] text-white/10 font-bold uppercase tracking-tighter text-center">Click derecho para eliminar</p>
+        <p className="mt-4 text-[9px] text-white/10 font-bold uppercase tracking-tighter text-center italic">Personaliza tus bloques</p>
       </div>
     );
   }
