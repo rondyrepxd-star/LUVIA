@@ -641,6 +641,7 @@ const QuizView = ({
     switch (q.type) {
       case 'multiple_choice':
       case 'true_false':
+        return normalize(answer) === normalize(q.correctAnswer);
       case 'blocking':
         return JSON.stringify(answer) === JSON.stringify(q.blockingCorrectWords || []);
       case 'short_answer':
@@ -2729,6 +2730,16 @@ const QuizView = ({
                     <h4 className="text-xl font-black uppercase italic tracking-tighter text-white">Matching Pairs</h4>
                     <p className="text-[10px] text-white/30 font-black uppercase tracking-widest italic">Connect terms on the left with their matches on the right</p>
                   </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-[9px] font-black uppercase tracking-[0.3em] text-white/30 italic">TITLE / QUESTION</Label>
+                  <Textarea 
+                    value={editForm.question} 
+                    onChange={(e) => setEditForm({...editForm, question: e.target.value})} 
+                    placeholder="E.g., Match the terms with their definitions"
+                    className="min-h-[80px] bg-[#111] border-2 border-white/5 rounded-xl p-4 text-sm font-medium focus:border-primary/50 text-white" 
+                  />
                 </div>
                 
                 <div className="space-y-4">

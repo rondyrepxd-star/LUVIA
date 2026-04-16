@@ -175,7 +175,7 @@ const FloatingMenu = ({
   const [isNoteOpen, setIsNoteOpen] = useState(false);
   const [noteText, setNoteText] = useState('');
   const [selectedReference, setSelectedReference] = useState('');
-  const [fontSize, setFontSize] = useState(3); 
+  const [fontSize, setFontSize] = useState(12); 
   const [savedRange, setSavedRange] = useState<Range | null>(null);
   
   const [isMoveMode, setIsMoveMode] = useState(false);
@@ -495,9 +495,18 @@ const FloatingMenu = ({
       } catch (e) {
         document.execCommand('fontName', false, value);
       }
+    } else if (command === 'fontSize') {
+      document.execCommand('fontSize', false, '7');
+      const fontEls = editorRef.current?.querySelectorAll('font[size="7"]');
+      if (fontEls) {
+        Array.from(fontEls).forEach(el => {
+          el.removeAttribute('size');
+          (el as HTMLElement).style.fontSize = `${value}px`;
+          // If the element is now just a font tag with a style, we might want to change it to a span,
+          // but just adding the style to the font tag works perfectly in modern browsers.
+        });
+      }
     } else {
-      selection.removeAllRanges();
-      selection.addRange(range);
       document.execCommand(command, false, value);
     }
     
@@ -882,6 +891,23 @@ const FloatingMenu = ({
                                     <p><br></p>
                                   `;
                                   execCommand('insertHTML', toggleHtml);
+                                } else if (item.label === 'Texto') {
+                                  // Mejorar la conversión de lista a texto
+                                  const selection = window.getSelection();
+                                  if (selection && selection.rangeCount > 0) {
+                                    const anchor = selection.anchorNode;
+                                    const li = anchor?.nodeType === 3 ? anchor.parentElement?.closest('li') : (anchor as HTMLElement)?.closest('li');
+                                    if (li) {
+                                      // Si estamos en una lista, toggler la lista para quitarla
+                                      const listTag = li.parentElement?.tagName.toLowerCase();
+                                      if (listTag === 'ul') document.execCommand('insertUnorderedList');
+                                      else if (listTag === 'ol') document.execCommand('insertOrderedList');
+                                    } else {
+                                      execCommand('formatBlock', item.tag);
+                                    }
+                                  } else {
+                                    execCommand('formatBlock', item.tag);
+                                  }
                                 } else {
                                   execCommand('formatBlock', item.tag);
                                 }
@@ -1058,51 +1084,51 @@ const FloatingMenu = ({
               )}
             </div>
 
-            <div className={cn("relative border-r border-white/5 pr-1 mr-1", isMoveMode && "pointer-events-none opacity-50")}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button 
-                    onClick={() => {
-                      setShowFontSizeSelector(!showFontSizeSelector);
-                      setShowBlockSelector(false);
-                      setShowFontSelector(false);
-                      setShowColorSelector(false);
-                      setShowAlignmentSelector(false);
-                      setShowColumnSelector(false);
-                      setShowLinkInput(false);
-                    }}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-black hover:bg-white/5 rounded-lg transition-colors text-white/80 italic"
-                  >
-                    {fontSize}
-                    <ChevronDown size={12} className="opacity-40" />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent className="bg-black text-[9px] font-black uppercase">Tamaño de fuente</TooltipContent>
-              </Tooltip>
+            <div className={cn("flex items-center gap-1 border-r border-white/5 pr-2 mr-1", isMoveMode && "pointer-events-none opacity-50")}>
+              <button 
+                onClick={() => {
+                  const newSize = Math.max(1, (fontSize || 12) - 1);
+                  setFontSize(newSize);
+                  execCommand('fontSize', newSize.toString());
+                }}
+                className="p-1.5 hover:bg-white/5 rounded-md text-white/40 hover:text-white transition-colors"
+                title="Reducir tamaño"
+              >
+                <MinusIcon size={14} />
+              </button>
+              
+              <div className="relative group/fs-input">
+                <input 
+                  type="text"
+                  value={fontSize}
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/\D/g, '');
+                    if (val === '') {
+                      (setFontSize as any)('');
+                    } else {
+                      const num = parseInt(val);
+                      setFontSize(num);
+                      if (num > 0) execCommand('fontSize', num.toString());
+                    }
+                  }}
+                  onBlur={() => {
+                    if (!fontSize || (fontSize as any) === '') setFontSize(12);
+                  }}
+                  className="w-10 bg-white/5 border border-white/10 rounded-lg text-[11px] font-black text-center py-1 text-white/80 focus:border-primary/50 outline-none transition-all italic"
+                />
+              </div>
 
-              {showFontSizeSelector && (
-                <div className={cn(
-                  "absolute left-0 mt-2 bg-[#1a1a1a] border border-white/10 rounded-xl shadow-2xl py-2 w-16 animate-in fade-in zoom-in-95 overflow-hidden z-[60]",
-                  isAnchored ? "top-full" : "bottom-full mb-2"
-                )}>
-                  {[1, 2, 3, 4, 5, 6, 7].map(size => (
-                    <button
-                      key={size}
-                      onClick={() => {
-                        setFontSize(size);
-                        execCommand('fontSize', size.toString());
-                        setShowFontSizeSelector(false);
-                      }}
-                      className={cn(
-                        "flex items-center justify-center w-full px-4 py-2 text-[10px] font-black italic hover:bg-primary/10 hover:text-primary transition-colors",
-                        fontSize === size ? "text-primary bg-primary/5" : "text-white/60"
-                      )}
-                    >
-                      {size}
-                    </button>
-                  ))}
-                </div>
-              )}
+              <button 
+                onClick={() => {
+                  const newSize = Math.min(100, (fontSize || 12) + 1);
+                  setFontSize(newSize);
+                  execCommand('fontSize', newSize.toString());
+                }}
+                className="p-1.5 hover:bg-white/5 rounded-md text-white/40 hover:text-white transition-colors"
+                title="Aumentar tamaño"
+              >
+                <Plus size={14} />
+              </button>
             </div>
 
             <div className={cn("flex items-center gap-0.5 px-2 pr-1 border-r border-white/5 mr-1", isMoveMode && "pointer-events-none opacity-50")}>

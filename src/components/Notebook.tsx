@@ -450,12 +450,14 @@ const Notebook = ({
     // --- Block Handle Detection ---
     if (editorRef.current) {
       const rect = editorRef.current.getBoundingClientRect();
-      const editorPadding = 60; // Approximate margin area
       
       // If mouse is within the editor or its left margin
-      if (e.clientX >= rect.left - 100 && e.clientX <= rect.right) {
-        // Robust top-level block detection
-        let block = target.closest('.editor-content > *') as HTMLElement;
+      if (e.clientX >= rect.left - 150 && e.clientX <= rect.right) {
+        // Prefer LI if we are inside a list, otherwise top-level block
+        let block = target.closest('li') as HTMLElement;
+        if (!block || !editorRef.current.contains(block)) {
+          block = target.closest('.editor-content > *') as HTMLElement;
+        }
         
         // If we are hovering over the editor but not directly over a child, find the closest child
         if (!block && (target.classList.contains('editor-content') || editorRef.current.contains(target))) {
@@ -611,6 +613,69 @@ const Notebook = ({
     setPendingPaste(null);
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    // Handle specific list deletions to keep text in same position (not merging with above line)
+    if (e.key === 'Backspace') {
+      const selection = window.getSelection();
+      if (selection && selection.rangeCount > 0 && selection.isCollapsed) {
+        const range = selection.getRangeAt(0);
+        const li = range.startContainer.nodeType === 3 
+          ? range.startContainer.parentElement?.closest('li') 
+          : (range.startContainer as HTMLElement).closest('li');
+
+        if (li && range.startOffset === 0) {
+          // At the start of a list item
+          e.preventDefault();
+          
+          const content = li.innerHTML;
+          const parent = li.parentElement;
+          
+          if (parent) {
+             const p = document.createElement('p');
+             p.innerHTML = content || '<br>';
+             
+             // If we have bullet points above, we need to split the UL
+             const previousLi = li.previousElementSibling;
+             const nextLi = li.nextElementSibling;
+             
+             if (!previousLi && !nextLi) {
+               // Only item in list
+               parent.replaceWith(p);
+             } else if (!previousLi) {
+               // First item
+               parent.insertBefore(p, parent.firstChild);
+               li.remove();
+             } else {
+               // Has items above, insert after the list or split it (simpler to just pull out)
+               const newUl = document.createElement(parent.tagName);
+               let current = li.nextElementSibling;
+               while (current) {
+                 const next = current.nextElementSibling;
+                 newUl.appendChild(current);
+                 current = next;
+               }
+               
+               parent.after(p);
+               if (newUl.children.length > 0) {
+                 p.after(newUl);
+               }
+               li.remove();
+             }
+             
+             // Set cursor back
+             const newRange = document.createRange();
+             newRange.selectNodeContents(p);
+             newRange.collapse(true);
+             selection.removeAllRanges();
+             selection.addRange(newRange);
+             
+             if (editorRef.current) setContent(editorRef.current.innerHTML);
+          }
+        }
+      }
+    }
+  };
+
   const removeTag = (tagToRemove: string) => {
     setTags(tags.filter(t => t !== tagToRemove));
   };
@@ -735,7 +800,19 @@ const Notebook = ({
 
   const colorActiveBlock = (color: string) => {
     if (hoveredBlock) {
-      hoveredBlock.style.color = color;
+      if (hoveredBlock.tagName === 'LI') {
+        const span = hoveredBlock.querySelector('span:not(.notame-highlight)') as HTMLElement;
+        if (span) span.style.color = color;
+        else hoveredBlock.style.color = color;
+      } else {
+        hoveredBlock.style.color = color;
+      }
+      
+      // If it's inherit, remove style
+      if (color === 'inherit') {
+        hoveredBlock.style.removeProperty('color');
+      }
+
       if (editorRef.current) setContent(editorRef.current.innerHTML);
       toast({ title: "Color aplicado" });
     }
@@ -831,6 +908,9 @@ const Notebook = ({
               onMouseMove={handleMouseMove}
               onMouseUp={handleSelectionChange}
               onKeyDown={(e) => {
+                handleKeyDown(e);
+                if (e.defaultPrevented) return;
+
                 // Check custom block shortcuts first
                 try {
                   const rawShortcuts = localStorage.getItem('blockShortcuts');
