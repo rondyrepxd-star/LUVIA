@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useRef, useState, useEffect, useMemo, useCallback } from 'react';
-import { Hash, X, CheckCircle2, ChevronDown, Trash2, Plus, GripVertical, MoreHorizontal, Palette, LayoutGrid, ArrowUp, ArrowDown, ArrowRight } from 'lucide-react';
+import { Hash, X, CheckCircle2, ChevronDown, Trash2, Plus, GripVertical, MoreHorizontal, Palette, LayoutGrid, ArrowUp, ArrowDown, ArrowRight, Pencil } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import FloatingMenu from './FloatingMenu';
 import TableToolbar from './TableToolbar';
@@ -44,6 +44,15 @@ interface ResizeState {
   startWidth: number;
   startHeight: number;
 }
+
+const rgb2hex = (rgb: string) => {
+  if (!rgb) return "";
+  if (/^#[0-9A-F]{6}$/i.test(rgb)) return rgb;
+  const rgbValues = rgb.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
+  if (!rgbValues) return "";
+  const hex = (x: string) => ("0" + parseInt(x).toString(16)).slice(-2);
+  return "#" + hex(rgbValues[1]) + hex(rgbValues[2]) + hex(rgbValues[3]);
+};
 
 const HandleButton = ({ icon, label, onClick, className }: { icon: React.ReactNode, label: string, onClick: () => void, className?: string }) => (
   <button 
@@ -105,6 +114,21 @@ const Notebook = ({
     cellTop: 0, cellLeft: 0, cellWidth: 0, cellHeight: 0,
     showPlusRight: false, showPlusBottom: false
   });
+  const [citationPresets, setCitationPresets] = useState<{ border: string, bg: string, dataBg: string }[]>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('luvia_citation_presets');
+      if (saved) {
+        try { return JSON.parse(saved); } catch(e) { return []; }
+      }
+    }
+    return [];
+  });
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('luvia_citation_presets', JSON.stringify(citationPresets));
+    }
+  }, [citationPresets]);
 
   const [hoveredBlock, setHoveredBlock] = useState<HTMLElement | null>(null);
   const [handleVisible, setHandleVisible] = useState(false);
@@ -191,11 +215,42 @@ const Notebook = ({
       document.body.style.cursor = '';
     }
 
+    const handleSmartLink = (e: any) => {
+      const text = e.detail;
+      if (!text || text === 'selection_mode_start') return;
+      if (editorRef.current) {
+        const selection = window.getSelection();
+        selection?.removeAllRanges();
+        
+        // This natively selects the text across spans/nodes if found
+        if ((window as any).find(text, false, false, true, false, false, false)) {
+          const range = selection?.getRangeAt(0);
+          if (range) {
+            const el = range.commonAncestorContainer.parentElement;
+            if (el) {
+              el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              el.style.transition = 'background-color 0.5s';
+              const oldBg = el.style.backgroundColor;
+              el.style.backgroundColor = 'rgba(129, 140, 248, 0.4)'; // Highlight temporarily
+              setTimeout(() => {
+                el.style.backgroundColor = oldBg;
+              }, 2000);
+            }
+          }
+        } else {
+          toast({ title: "No encontrado", description: "El texto referenciado ya no está en tus apuntes." });
+        }
+      }
+    };
+    
+    window.addEventListener('luvia-smart-link', handleSmartLink);
+
     return () => {
       document.removeEventListener('mousemove', handleGlobalMouseMove);
       document.removeEventListener('mouseup', handleGlobalMouseUp);
+      window.removeEventListener('luvia-smart-link', handleSmartLink);
     };
-  }, [isResizing, setContent]);
+  }, [isResizing, setContent, toast]);
 
   const removeCitation = (type: 'only-cita' | 'cita-and-text') => {
     if (!citationToDelete) return;
@@ -410,6 +465,73 @@ const Notebook = ({
     };
   }, [handleSelectionChange]);
 
+  useEffect(() => {
+    const handleSmartLink = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const detail = customEvent.detail;
+      if (!detail || !editorRef.current) return;
+      
+      let targetEl: HTMLElement | null = null;
+
+      // Try searching by marker ID first
+      if (typeof detail === 'string' && detail.startsWith('reminder-')) {
+        targetEl = editorRef.current.querySelector(`[data-reminder-id="${detail}"]`) as HTMLElement;
+      }
+
+      // Fallback to text content search
+      if (!targetEl) {
+        const elements = Array.from(editorRef.current.querySelectorAll('p, h1, h2, h3, li, blockquote, td, span, mark'));
+        targetEl = elements.find(el => (el as HTMLElement).textContent?.includes(detail)) as HTMLElement;
+      }
+      
+      if (targetEl) {
+        targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        const originalBg = targetEl.style.backgroundColor;
+        const originalOutline = targetEl.style.outline;
+        targetEl.style.transition = 'all 0.5s';
+        targetEl.style.outline = '4px solid hsl(var(--primary))';
+        targetEl.style.outlineOffset = '2px';
+        setTimeout(() => {
+          if (targetEl) {
+            targetEl.style.outline = originalOutline;
+          }
+        }, 2500);
+      }
+    };
+    
+    window.addEventListener('luvia-smart-link', handleSmartLink);
+
+    const handleRemoveReminder = (e: any) => {
+      const markerId = e.detail;
+      if (!markerId) return;
+      const marker = editorRef.current?.querySelector(`[data-reminder-id="${markerId}"]`);
+      if (marker) {
+        const text = marker.textContent || "";
+        marker.replaceWith(text);
+        if (editorRef.current) setContent(editorRef.current.innerHTML);
+      }
+    };
+    window.addEventListener('luvia-remove-reminder', handleRemoveReminder);
+
+    const handleEditorDoubleClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      const reminder = target.closest('.luvia-reminder-mark') as HTMLElement;
+      if (reminder) {
+        const markerId = reminder.getAttribute('data-reminder-id');
+        if (markerId) {
+          window.dispatchEvent(new CustomEvent('luvia-open-reminder-manager', { detail: markerId }));
+        }
+      }
+    };
+    editorRef.current?.addEventListener('dblclick', handleEditorDoubleClick);
+
+    return () => {
+      window.removeEventListener('luvia-smart-link', handleSmartLink);
+      window.removeEventListener('luvia-remove-reminder', handleRemoveReminder);
+      editorRef.current?.removeEventListener('dblclick', handleEditorDoubleClick);
+    };
+  }, []);
+
   const handleInput = (e: React.FormEvent<HTMLDivElement>) => {
     setContent(e.currentTarget.innerHTML);
     setIsSaved(false);
@@ -542,7 +664,19 @@ const Notebook = ({
       } else {
         // Normal paste
         e.preventDefault();
-        if (html) document.execCommand('insertHTML', false, html);
+        if (html) {
+          const parser = new DOMParser();
+          const doc = parser.parseFromString(html, 'text/html');
+          doc.querySelectorAll('*').forEach(el => {
+            const element = el as HTMLElement;
+            if (element.style) {
+              element.style.fontSize = '';
+              element.style.fontFamily = '';
+              element.style.lineHeight = '';
+            }
+          });
+          document.execCommand('insertHTML', false, doc.body.innerHTML);
+        }
         else if (text) document.execCommand('insertText', false, text);
         if (editorRef.current) setContent(editorRef.current.innerHTML);
       }
@@ -704,12 +838,24 @@ const Notebook = ({
   }, [width]);
 
   const handleContainerClick = (e: React.MouseEvent) => {
-    // If the user clicks on the white space below the content (the padding area)
+    // Single click: focus at the end if clicking empty container space
     if (e.target === e.currentTarget || (e.target as HTMLElement).classList.contains('group/notebook')) {
-      // Use preventScroll to avoid jumping if the browser tries to be helpful
       editorRef.current?.focus({ preventScroll: true });
       
-      // Move cursor to the end of the document
+      const selection = window.getSelection();
+      if (selection && editorRef.current) {
+        const range = document.createRange();
+        range.selectNodeContents(editorRef.current);
+        range.collapse(false); // Move to end of everything
+        selection.removeAllRanges();
+        selection.addRange(range);
+      }
+    }
+  };
+
+  const handleContainerDoubleClick = (e: React.MouseEvent) => {
+    if (e.target === e.currentTarget || (e.target as HTMLElement).classList.contains('group/notebook')) {
+      editorRef.current?.focus({ preventScroll: true });
       const selection = window.getSelection();
       if (selection && editorRef.current) {
         const range = document.createRange();
@@ -717,8 +863,6 @@ const Notebook = ({
         range.collapse(false);
         selection.removeAllRanges();
         selection.addRange(range);
-        
-        // Ensure the editor stays in view at the bottom
         editorRef.current.scrollIntoView({ block: 'end', behavior: 'instant' });
       }
     }
@@ -731,11 +875,13 @@ const Notebook = ({
     const scrollContainer = document.querySelector('.notebook-scroll-area');
 
     if (x < marginSize) {
+      e.stopPropagation();
       // Left margin -> Scroll to Top
       if (scrollContainer) scrollContainer.scrollTo({ top: 0, behavior: 'smooth' });
       else window.scrollTo({ top: 0, behavior: 'smooth' });
       toast({ title: "Navegación", description: "Volviendo al inicio" });
     } else if (x > rect.width - marginSize) {
+      e.stopPropagation();
       // Right margin -> Scroll to Bottom
       if (scrollContainer) {
         scrollContainer.scrollTo({ top: scrollContainer.scrollHeight, behavior: 'smooth' });
@@ -836,7 +982,7 @@ const Notebook = ({
         </div>
       )}
 
-      <div className="relative notebook-scroll-area overflow-y-auto max-h-[calc(100vh-140px)] custom-scrollbar" onClick={handleContainerClick}>
+      <div className="relative notebook-scroll-area overflow-y-auto max-h-[calc(100vh-140px)] custom-scrollbar" onClick={handleContainerClick} onDoubleClick={handleContainerDoubleClick}>
         <div 
           className={cn(
             "mx-auto pt-8 pb-96 px-12 group/notebook relative text-left transition-all duration-500 min-h-[calc(100vh-200px)]",
@@ -1184,27 +1330,162 @@ const Notebook = ({
               spellCheck={spellcheckEnabled}
               style={{ fontSize: `${fontSize}px` }}
               className={cn(
-                "editor-content w-full leading-relaxed min-h-[calc(100vh-320px)] outline-none text-foreground/80 min-h-[500px]",
+                "editor-content w-full leading-relaxed min-h-[calc(100vh-320px)] outline-none text-foreground/80 min-h-[500px] pb-96",
                 fontClass
               )}
               data-placeholder="Start typing or paste images..."
             ></div>
 
             {activeCitation && (
-              <button
-                className="citation-delete-btn absolute z-[60] w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center shadow-lg hover:bg-red-600 transition-all scale-90 hover:scale-100 animate-in zoom-in-50 duration-200"
+              <div 
+                className="absolute z-[60] flex flex-col gap-2"
                 style={{ 
                   top: citationBtnPos.top + 8,
                   left: citationBtnPos.left - 12
                 }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setCitationToDelete(activeCitation);
-                  setShowCitationDialog(true);
-                }}
               >
-                <X size={14} strokeWidth={3} />
-              </button>
+                <button
+                  className="citation-delete-btn w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center shadow-lg hover:bg-red-600 transition-all scale-90 hover:scale-100 animate-in zoom-in-50 duration-200"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setCitationToDelete(activeCitation);
+                    setShowCitationDialog(true);
+                  }}
+                >
+                  <X size={14} strokeWidth={3} />
+                </button>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button
+                      className="citation-delete-btn w-6 h-6 bg-primary text-white rounded-full flex items-center justify-center shadow-lg hover:bg-primary/80 transition-all scale-90 hover:scale-100 animate-in zoom-in-50 duration-200"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <Pencil size={12} strokeWidth={3} />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent className="p-4 bg-[#111] border border-white/10 rounded-2xl shadow-2xl flex flex-col gap-4 w-60 z-[80]">
+                    <div className="flex items-center justify-between mb-1">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-white/30 italic">Personalizar Cita</p>
+                      <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                    </div>
+                    
+                    <div className="space-y-4">
+                      <div className="flex flex-col gap-2">
+                        <div className="flex justify-between items-center">
+                          <span className="text-[9px] text-white/50 uppercase font-bold tracking-wider">Color de Barra</span>
+                          <span className="text-[9px] font-mono text-white/20 uppercase">{(activeCitation.style.borderLeftColor || '#3b82f6')}</span>
+                        </div>
+                        <input 
+                          type="color" 
+                          defaultValue={rgb2hex(activeCitation.style.borderLeftColor) || "#3b82f6"} 
+                          onInput={(e) => {
+                            activeCitation.style.borderLeftColor = e.currentTarget.value;
+                          }} 
+                          className="w-full h-8 rounded-lg border border-white/5 cursor-pointer p-0 bg-transparent hover:scale-[1.02] transition-transform" 
+                        />
+                      </div>
+
+                      <div className="flex flex-col gap-2">
+                        <div className="flex justify-between items-center">
+                          <span className="text-[9px] text-white/50 uppercase font-bold tracking-wider">Color de Fondo</span>
+                          <span className="text-[9px] font-mono text-white/20 uppercase">{(activeCitation.style.backgroundColor || '#1a1a2e')}</span>
+                        </div>
+                        <input 
+                          type="color" 
+                          defaultValue={rgb2hex(activeCitation.style.backgroundColor) || "#1a1a2e"} 
+                          onInput={(e) => {
+                            const val = e.currentTarget.value;
+                            activeCitation.style.backgroundColor = `${val}40`;
+                            activeCitation.style.background = 'none'; // clear gradient
+                            activeCitation.style.backgroundImage = 'none'; // clear gradient specifically
+                            activeCitation.setAttribute('data-bg-color', val); // Store for persistence
+                          }} 
+                          className="w-full h-8 rounded-lg border border-white/5 cursor-pointer p-0 bg-transparent hover:scale-[1.02] transition-transform" 
+                        />
+                      </div>
+
+                      <div className="flex flex-col gap-2">
+                        <div className="flex justify-between items-center">
+                          <span className="text-[9px] text-white/50 uppercase font-bold tracking-wider">Opacidad Fondo</span>
+                          <span className="text-[9px] font-mono text-white/20 uppercase">{(activeCitation.style.backgroundColor && activeCitation.style.backgroundColor.includes('rgba') ? 'A' : 'Hex')}</span>
+                        </div>
+                        <input 
+                          type="range" 
+                          min="0" max="100" 
+                          defaultValue={25}
+                          onInput={(e) => {
+                            const opacity = Math.round(parseInt(e.currentTarget.value) * 2.55).toString(16).padStart(2, '0');
+                            const baseColor = activeCitation.getAttribute('data-bg-color') || '#1a1a2e';
+                            activeCitation.style.backgroundColor = `${baseColor}${opacity}`;
+                          }}
+                          className="w-full h-1.5 bg-white/5 rounded-lg appearance-none cursor-pointer accent-primary"
+                        />
+                      </div>
+
+                      {citationPresets.length > 0 && (
+                        <div className="flex flex-col gap-2">
+                          <span className="text-[9px] text-white/30 uppercase font-bold tracking-tight px-1">Presets Guardados</span>
+                          <div className="flex flex-wrap gap-2 px-1">
+                            {citationPresets.map((preset, idx) => (
+                              <div key={idx} className="group/preset relative">
+                                <button
+                                  onMouseDown={(e) => e.preventDefault()}
+                                  onClick={() => {
+                                    activeCitation.style.borderLeftColor = preset.border;
+                                    activeCitation.style.backgroundColor = preset.bg;
+                                    activeCitation.setAttribute('data-bg-color', preset.dataBg);
+                                    if (editorRef.current) setContent(editorRef.current.innerHTML);
+                                    toast({ title: "Preset aplicado" });
+                                  }}
+                                  className="w-10 h-10 rounded-xl border border-white/10 overflow-hidden hover:scale-105 transition-all shadow-md flex"
+                                >
+                                  <div className="w-[8px] h-full shrink-0" style={{ backgroundColor: preset.border }} />
+                                  <div className="flex-1 h-full" style={{ backgroundColor: preset.bg }} />
+                                </button>
+                                <button 
+                                  onMouseDown={(e) => e.preventDefault()}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setCitationPresets(prev => prev.filter((_, i) => i !== idx));
+                                  }}
+                                  className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover/preset:opacity-100 transition-opacity hover:scale-110 z-10"
+                                >
+                                  <X size={10} strokeWidth={3} />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="h-px bg-white/5 my-1" />
+
+                      <button
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => {
+                          const newPreset = {
+                            border: activeCitation.style.borderLeftColor || "#3b82f6",
+                            bg: activeCitation.style.backgroundColor || "#1a1a2e40",
+                            dataBg: activeCitation.getAttribute('data-bg-color') || "#1a1a2e"
+                          };
+                          
+                          // Check if already exists
+                          const exists = citationPresets.some(p => p.bg === newPreset.bg && p.border === newPreset.border);
+                          if (!exists) {
+                            setCitationPresets(prev => [...prev, newPreset]);
+                          }
+
+                          if (editorRef.current) setContent(editorRef.current.innerHTML);
+                          toast({ title: "Cambios aplicados", description: "Diseño actualizado y guardado en presets." });
+                        }}
+                        className="w-full bg-primary/10 hover:bg-primary text-primary hover:text-white py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border border-primary/20 shadow-lg shadow-primary/5 group/confirm"
+                      >
+                        Confirmar Cambios
+                      </button>
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              </div>
             )}
 
             {tableControls.show &&

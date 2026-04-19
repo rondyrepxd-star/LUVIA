@@ -36,7 +36,9 @@ import {
   HelpCircle,
   ArrowRight,
   GripVertical,
-  Layout
+  Layout,
+  Link2 as LinkIcon,
+  ExternalLink
 } from 'lucide-react';
 import { GenerateQuizOutput } from '@/ai/flows/generate-quiz-flow';
 import { Button } from '@/components/ui/button';
@@ -166,17 +168,53 @@ const QuizView = ({
   quiz, 
   setQuiz,
   onExit,
-  autoStart
+  autoStart,
+  onNavigateToNotebook
 }: { 
   currentNoteId: string,
   noteContent: string, 
   quiz: GenerateQuizOutput | null, 
   setQuiz: (quiz: GenerateQuizOutput | null) => void,
   onExit?: () => void,
-  autoStart?: boolean
+  autoStart?: boolean,
+  onNavigateToNotebook?: (searchText: string, source?: string) => void
 }) => {
   const { toast } = useToast();
   
+  const [isSelectingLink, setIsSelectingLink] = useState(false);
+  const [lastSmartLink, setLastSmartLink] = useState<string | null>(null);
+  const [isViewingLinkFromQuiz, setIsViewingLinkFromQuiz] = useState(false);
+
+  useEffect(() => {
+    if (isSelectingLink) {
+      // Go directly to the Notebook tab without closing Question Desk
+      onNavigateToNotebook?.("selection_mode_start");
+      toast({ title: "Modo Selección", description: "Selecciona texto en tu Notebook para vincular a esta pregunta" });
+    }
+  }, [isSelectingLink]);
+  
+  useEffect(() => {
+    if (!isSelectingLink) return;
+    const handler = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      // Ensure we are clicking something inside an editor but NOT in QuizView
+      const block = target.closest('.editor-content *');
+      if (block && document.querySelector('.notebook-scroll-area')) {
+        const text = block.textContent?.trim().substring(0, 80) || '';
+        if (text) {
+          setEditForm((prev: any) => ({...prev, smartLink: text}));
+          setLastSmartLink(text);
+          setIsSelectingLink(false);
+          toast({ title: "Link Associated", description: `Linked to: "${text}..."` });
+          // Head back to Quiz tab
+          document.getElementById('return-to-quiz-tab-btn')?.click();
+        }
+      }
+    };
+    // use capture and high priority
+    document.addEventListener('mouseup', handler, { capture: true });
+    return () => document.removeEventListener('mouseup', handler, { capture: true });
+  }, [isSelectingLink]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isQuizStarted, setIsQuizStarted] = useState(false);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
@@ -858,6 +896,17 @@ const QuizView = ({
     if (editingIndex !== null) newQuestions[editingIndex] = editForm;
     else newQuestions.push(editForm);
     setQuiz({ quiz: newQuestions });
+
+    if (isQuizStarted) {
+      if (editingIndex !== null) {
+        setSessionQuestions(prev => prev.map(q => 
+          q.originalIndex === editingIndex ? { ...q, ...editForm, originalIndex: editingIndex } : q
+        ));
+      } else {
+        setSessionQuestions(prev => [...prev, { ...editForm, originalIndex: newQuestions.length - 1 }]);
+      }
+    }
+
     setIsEditModalOpen(false);
   };
 
@@ -1316,14 +1365,31 @@ const QuizView = ({
                         <h3 className="text-2xl font-black leading-tight tracking-tighter uppercase italic text-left text-white/90">
                           {currentQuestion.type === 'fill_in_blank' ? "COMPLETE THE NEURAL SEQUENCE:" : (currentQuestion.question || "PROCESS THIS INPUT:")}
                         </h3>
-                        <Button 
-                          onClick={() => openEditModal(currentQuestion.originalIndex ?? null)}
-                          variant="ghost" 
-                          size="icon" 
-                          className="h-10 w-10 shrink-0 rounded-xl bg-white/5 border border-white/5 text-white/40 hover:text-white"
-                        >
-                          <Pencil size={18} />
-                        </Button>
+                        <div className="flex items-center gap-2 shrink-0">
+                          {currentQuestion.smartLink && (
+                            <Button
+                              onClick={() => {
+                                onNavigateToNotebook?.(currentQuestion.smartLink, 'quiz');
+                                setTimeout(() => {
+                                  window.dispatchEvent(new CustomEvent('luvia-smart-link', { detail: currentQuestion.smartLink }));
+                                }, 400);
+                              }}
+                              variant="outline"
+                              size="sm"
+                              className="h-9 gap-2 border-primary/30 text-primary hover:bg-primary/10 rounded-xl font-black uppercase italic text-[10px]"
+                            >
+                              <ExternalLink size={14} /> JUMP IN
+                            </Button>
+                          )}
+                          <Button 
+                            onClick={() => openEditModal(currentQuestion.originalIndex ?? null)}
+                            variant="ghost" 
+                            size="icon" 
+                            className="h-10 w-10 shrink-0 rounded-xl bg-white/5 border border-white/5 text-white/40 hover:text-white"
+                          >
+                            <Pencil size={18} />
+                          </Button>
+                        </div>
                       </div>
 
                       {currentQuestion.type === 'multiple_choice' && (
@@ -2083,48 +2149,49 @@ const QuizView = ({
           </div>
 
           <div className="flex flex-wrap gap-2">
-            {questionPresets
-              .filter(p => !p.isPrivate || p.noteId === currentNoteId)
-              .length === 0 ? (
+            {questionPresets.length === 0 || !questionPresets.some(p => !p.isPrivate || p.noteId === currentNoteId) ? (
               <p className="text-[9px] text-white/10 font-bold uppercase italic p-2 border border-dashed border-white/5 rounded-xl w-full text-center">No hay selecciones guardadas.</p>
             ) : (
-              questionPresets.map((preset, pIdx) => (
-                <div key={pIdx} className="group relative">
-                  <button 
-                    onClick={() => applyPreset(preset.indices)}
-                    className={cn(
-                      "h-9 px-4 rounded-xl border flex items-center gap-2 transition-all hover:scale-105 active:scale-95",
-                      preset.indices.every(idx => selectedIndices.has(idx)) && preset.indices.length > 0
-                        ? "bg-primary border-primary text-white shadow-lg shadow-primary/20"
-                        : "bg-white/5 border-white/5 text-white/40 hover:text-white hover:border-white/10"
-                    )}
-                  >
-                    <Layers size={14} className="opacity-40" />
-                    <span className="text-[10px] font-black uppercase tracking-wider italic">{preset.name}</span>
-                    <Badge className="bg-white/10 text-[9px] h-4 px-1.5 border-0 rounded-md italic">{preset.indices.length}</Badge>
-                  </button>
-                  <div className="absolute -top-1 -right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+              questionPresets.map((preset, pIdx) => {
+                if (preset.isPrivate && preset.noteId !== currentNoteId) return null;
+                return (
+                  <div key={pIdx} className="group relative">
                     <button 
-                      onClick={(e) => { 
-                        e.stopPropagation(); 
-                        setEditingPresetIndex(pIdx);
-                        setNewPresetName(preset.name);
-                        setIsPresetPrivate(!!preset.isPrivate);
-                        setIsSavePresetDialogOpen(true);
-                      }}
-                      className="w-4 h-4 bg-primary text-white rounded-full flex items-center justify-center hover:scale-110"
+                      onClick={() => applyPreset(preset.indices)}
+                      className={cn(
+                        "h-9 px-4 rounded-xl border flex items-center gap-2 transition-all hover:scale-105 active:scale-95",
+                        preset.indices.every(idx => selectedIndices.has(idx)) && preset.indices.length > 0
+                          ? "bg-primary border-primary text-white shadow-lg shadow-primary/20"
+                          : "bg-white/5 border-white/5 text-white/40 hover:text-white hover:border-white/10"
+                      )}
                     >
-                      <Pencil size={8} />
+                      <Layers size={14} className="opacity-40" />
+                      <span className="text-[10px] font-black uppercase tracking-wider italic">{preset.name}</span>
+                      <Badge className="bg-white/10 text-[9px] h-4 px-1.5 border-0 rounded-md italic">{preset.indices.length}</Badge>
                     </button>
-                    <button 
-                      onClick={(e) => { e.stopPropagation(); deletePreset(pIdx); }}
-                      className="w-4 h-4 bg-destructive text-white rounded-full flex items-center justify-center hover:scale-110"
-                    >
-                      <X size={10} />
-                    </button>
+                    <div className="absolute -top-1 -right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button 
+                        onClick={(e) => { 
+                          e.stopPropagation(); 
+                          setEditingPresetIndex(pIdx);
+                          setNewPresetName(preset.name);
+                          setIsPresetPrivate(!!preset.isPrivate);
+                          setIsSavePresetDialogOpen(true);
+                        }}
+                        className="w-4 h-4 bg-primary text-white rounded-full flex items-center justify-center hover:scale-110"
+                      >
+                        <Pencil size={8} />
+                      </button>
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); deletePreset(pIdx); }}
+                        className="w-4 h-4 bg-destructive text-white rounded-full flex items-center justify-center hover:scale-110"
+                      >
+                        <X size={10} />
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>
@@ -2179,7 +2246,7 @@ const QuizView = ({
                   <Checkbox checked={selectedIndices.has(idx)} onCheckedChange={() => toggleQuestionSelection(idx)} onClick={(e) => e.stopPropagation()} />
                   <div className="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center text-primary border border-white/5">{getIconForType(q.type)}</div>
                   <div className="min-w-0 flex-1">
-                    <h4 className="font-black truncate text-sm uppercase italic text-white/90">{q.type === 'flashcard' ? q.front : (q.question || "UNTITLED VECT")}</h4>
+                    <h4 className="font-black truncate text-sm uppercase italic text-foreground">{q.type === 'flashcard' ? q.front : (q.question || "UNTITLED VECT")}</h4>
                     <div className="flex items-center gap-3 mt-1.5">
                       <Badge className="text-[8px] font-black uppercase h-4 px-2 bg-primary/10 text-primary border-0 rounded-md italic">{q.difficulty}</Badge>
                       <span className="text-[8px] text-white/20 font-black uppercase tracking-[0.2em] italic">{q.type.replace('_', ' ')}</span>
@@ -2213,14 +2280,63 @@ const QuizView = ({
     <div className="h-full relative overflow-y-auto custom-scrollbar">
       {renderQuizContent()}
       
-      <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
-        <DialogContent className="max-w-[650px] p-0 bg-background/95 backdrop-blur-3xl border-white/5 flex flex-col max-h-[85vh] rounded-[2.2rem] shadow-[0_50px_100px_-20px_rgba(0,0,0,0.5)] border-2">
-          <DialogHeader className="p-6 pb-2 flex flex-row items-center justify-between space-y-0 text-left">
-            <div className="flex items-center gap-5">
+      <Button id="return-to-quiz-tab-btn" className="hidden" onClick={() => document.getElementById('quiz-tab-button')?.click()} />
+
+      <Dialog open={isEditModalOpen && !isSelectingLink} onOpenChange={setIsEditModalOpen}>
+        <DialogContent onPointerDownOutside={(e) => { if (isSelectingLink) e.preventDefault(); }} className="max-w-[650px] p-0 bg-background/95 backdrop-blur-3xl border-white/5 flex flex-col max-h-[85vh] rounded-[2.2rem] shadow-[0_50px_100px_-20px_rgba(0,0,0,0.5)] border-2">
+          <DialogHeader className="p-6 pb-2 flex flex-row items-start lg:items-center justify-between space-y-0 text-left">
+            <div className="flex flex-wrap items-center gap-5">
               <div className="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center text-primary border border-primary/20"><Layers size={20} /></div>
               <div><DialogTitle className="text-xl font-black uppercase italic tracking-tighter text-white">QUESTION DESK</DialogTitle></div>
+              
+              <div className="flex items-center gap-2">
+                {lastSmartLink ? (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm" className="h-9 gap-2 border-primary/30 text-primary hover:bg-primary/10 rounded-xl font-black uppercase italic text-[10px]">
+                        <LinkIcon size={14} /> 
+                        {editForm.smartLink ? "CHANGE LINK" : "ADD LINK"}
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent className="bg-[#111] border-white/10 rounded-xl">
+                      <DropdownMenuItem className="focus:bg-white/5 cursor-pointer text-xs font-bold" onClick={() => {
+                        setEditForm((prev: any) => ({ ...prev, smartLink: lastSmartLink }));
+                        toast({ title: "Link Associated", description: `Linked to last known text.` });
+                      }}>
+                        Add Last Link (Used previously)
+                      </DropdownMenuItem>
+                      <DropdownMenuItem className="focus:bg-white/5 cursor-pointer text-xs font-bold" onClick={() => setIsSelectingLink(true)}>
+                        Create New Link
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                ) : (
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="h-9 gap-2 border-primary/30 text-primary hover:bg-primary/10 rounded-xl font-black uppercase italic text-[10px]"
+                    onClick={() => setIsSelectingLink(true)}
+                  >
+                    <LinkIcon size={14} /> 
+                    {editForm.smartLink ? "CHANGE LINK" : "ADD LINK"}
+                  </Button>
+                )}
+                {editForm.smartLink && (
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    className="h-9 gap-2 text-primary hover:bg-primary/10 hover:text-primary rounded-xl font-black uppercase italic text-[10px]"
+                    onClick={() => {
+                        handleSaveQuestion(); // Save progress
+                        onNavigateToNotebook?.(editForm.smartLink!, 'question-desk'); // Jump, but keep Question Desk open!
+                    }}
+                  >
+                    JUMP TO LINK
+                  </Button>
+                )}
+              </div>
             </div>
-            <button onClick={() => setIsEditModalOpen(false)} className="p-1.5 text-white/40 hover:text-white"><X size={20} /></button>
+            <button onClick={() => setIsEditModalOpen(false)} className="p-1.5 text-white/40 hover:text-white shrink-0"><X size={20} /></button>
           </DialogHeader>
 
           <div className="flex-1 overflow-y-auto p-6 space-y-8 text-left custom-scrollbar relative">
@@ -2258,13 +2374,13 @@ const QuizView = ({
             {editForm.type === 'multiple_choice' && (
               <div className="space-y-6">
                 <div className="space-y-2">
-                  <Label className="text-sm font-bold text-white uppercase italic tracking-tight">Question</Label>
+                  <Label className="text-sm font-bold text-foreground uppercase italic tracking-tight">Question</Label>
                   <Textarea 
                     value={editForm.question} 
                     onChange={(e) => handleQuestionChange(e.target.value)} 
                     placeholder="What do you want to ask?"
                     className={cn(
-                      "min-h-[100px] bg-white/[0.03] border-2 rounded-xl p-4 text-sm font-medium text-white",
+                      "min-h-[100px] bg-white/[0.03] border-2 rounded-xl p-4 text-sm font-medium text-foreground",
                       !editForm.question.trim() ? "border-destructive/50" : "border-white/5"
                     )} 
                   />

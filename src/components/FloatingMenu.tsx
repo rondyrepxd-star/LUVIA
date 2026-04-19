@@ -15,7 +15,9 @@ import {
   AlignRight,
   AlignJustify,
   Columns2,
-  Anchor
+  Anchor,
+  Bell,
+  Highlighter
 } from 'lucide-react';
 import {
   Tooltip,
@@ -82,6 +84,13 @@ const fonts = [
   { name: 'Courier New', value: 'Courier New, monospace', type: 'Mono' },
 ];
 
+const hexToRgba = (hex: string, alpha: number) => {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+};
+
 const FloatingMenu = ({ 
   position, 
   onClose, 
@@ -98,6 +107,7 @@ const FloatingMenu = ({
   const [showFontSelector, setShowFontSelector] = useState(false);
   const [showFontSizeSelector, setShowFontSizeSelector] = useState(false);
   const [showColorSelector, setShowColorSelector] = useState(false);
+  const [showHighlightSelector, setShowHighlightSelector] = useState(false);
   const [showAlignmentSelector, setShowAlignmentSelector] = useState(false);
   const [showColumnSelector, setShowColumnSelector] = useState(false);
   const [showTableGrid, setShowTableGrid] = useState(false);
@@ -105,17 +115,21 @@ const FloatingMenu = ({
   const [gridLimit, setGridLimit] = useState({ r: 5, c: 5 });
   const [showLinkInput, setShowLinkInput] = useState(false);
   const [blockShortcuts, setBlockShortcuts] = useState<Record<string, string>>({});
+  const [alignmentShortcuts, setAlignmentShortcuts] = useState<Record<string, string>>({});
   const [recordingShortcutFor, setRecordingShortcutFor] = useState<string | null>(null);
+  const [recordingAlignmentFor, setRecordingAlignmentFor] = useState<string | null>(null);
 
   useEffect(() => {
     try {
       const saved = localStorage.getItem('blockShortcuts');
       if (saved) setBlockShortcuts(JSON.parse(saved));
+      const savedAlign = localStorage.getItem('alignmentShortcuts');
+      if (savedAlign) setAlignmentShortcuts(JSON.parse(savedAlign));
     } catch (e) {}
   }, []);
 
   useEffect(() => {
-    if (!recordingShortcutFor) return;
+    if (!recordingShortcutFor && !recordingAlignmentFor) return;
     
     const handleCapture = (e: KeyboardEvent) => {
       e.preventDefault();
@@ -131,20 +145,86 @@ const FloatingMenu = ({
         parts.push(e.key.toLowerCase());
         const combo = parts.join('+');
         
-        const updated = { ...blockShortcuts, [recordingShortcutFor]: combo };
-        setBlockShortcuts(updated);
-        localStorage.setItem('blockShortcuts', JSON.stringify(updated));
-        setRecordingShortcutFor(null);
+        if (recordingShortcutFor) {
+          const updated = { ...blockShortcuts, [recordingShortcutFor]: combo };
+          setBlockShortcuts(updated);
+          localStorage.setItem('blockShortcuts', JSON.stringify(updated));
+          setRecordingShortcutFor(null);
+        } else if (recordingAlignmentFor) {
+          const updated = { ...alignmentShortcuts, [recordingAlignmentFor]: combo };
+          setAlignmentShortcuts(updated);
+          localStorage.setItem('alignmentShortcuts', JSON.stringify(updated));
+          setRecordingAlignmentFor(null);
+        }
       } else if (e.key === 'Escape') {
         setRecordingShortcutFor(null);
+        setRecordingAlignmentFor(null);
       }
     };
     
     window.addEventListener('keydown', handleCapture, { capture: true });
     return () => window.removeEventListener('keydown', handleCapture, { capture: true });
-  }, [recordingShortcutFor, blockShortcuts]);
+  }, [recordingShortcutFor, recordingAlignmentFor, blockShortcuts, alignmentShortcuts]);
+
+  useEffect(() => {
+    const handleShortcutExecution = (e: KeyboardEvent) => {
+      if (recordingShortcutFor || recordingAlignmentFor) return;
+      
+      const parts = [];
+      if (e.ctrlKey) parts.push('ctrl');
+      if (e.metaKey) parts.push('cmd');
+      if (e.altKey) parts.push('alt');
+      if (e.shiftKey) parts.push('shift');
+      if (!['Control', 'Shift', 'Alt', 'Meta'].includes(e.key)) {
+        parts.push(e.key.toLowerCase());
+      }
+      const combo = parts.join('+');
+
+      // Check alignment shortcuts first
+      for (const [action, shortcut] of Object.entries(alignmentShortcuts)) {
+        if (shortcut === combo) {
+          e.preventDefault();
+          e.stopPropagation();
+          const cmd = action === 'Izquierda' ? 'justifyLeft' : 
+                      action === 'Centro' ? 'justifyCenter' : 
+                      action === 'Derecha' ? 'justifyRight' : 
+                      action === 'Justificado' ? 'justifyFull' : 'justifyLeft';
+          document.execCommand(cmd, false);
+          return;
+        }
+      }
+    };
+    window.addEventListener('keydown', handleShortcutExecution);
+    return () => window.removeEventListener('keydown', handleShortcutExecution);
+  }, [alignmentShortcuts, recordingShortcutFor, recordingAlignmentFor]);
 
   const tableGridRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const updateSizeFromSelection = () => {
+      const selection = window.getSelection();
+      if (!selection || selection.rangeCount === 0) return;
+      
+      const node = selection.focusNode;
+      if (!node) return;
+      
+      const element = node.nodeType === 3 ? node.parentElement : (node as HTMLElement);
+      const isInputActive = document.activeElement?.tagName === 'INPUT';
+      
+      if (element && editorRef.current?.contains(element) && !isInputActive) {
+         const computedStyle = window.getComputedStyle(element);
+         if (computedStyle.fontSize) {
+            const size = Math.round(parseFloat(computedStyle.fontSize));
+            if (!isNaN(size)) {
+               setFontSize(size);
+            }
+         }
+      }
+    };
+    
+    document.addEventListener('selectionchange', updateSizeFromSelection);
+    return () => document.removeEventListener('selectionchange', updateSizeFromSelection);
+  }, [editorRef]);
 
   useEffect(() => {
     if (showTableGrid && tableGridRef.current) {
@@ -171,6 +251,15 @@ const FloatingMenu = ({
   }, [showTableGrid, gridLimit, hoveredGrid]);
 
   const [linkUrl, setLinkUrl] = useState('');
+  const [showRememberMe, setShowRememberMe] = useState(false);
+  const [rememberPrompt, setRememberPrompt] = useState('');
+  const [rememberReveal, setRememberReveal] = useState('');
+  const [rememberIntervalType, setRememberIntervalType] = useState('minute');
+  const [rememberIntervalValue, setRememberIntervalValue] = useState(1);
+  const [rememberDuration, setRememberDuration] = useState(10);
+  const [rememberScheduleMode, setRememberScheduleMode] = useState<'interval' | 'frequency'>('interval');
+  const [rememberFrequencyValue, setRememberFrequencyValue] = useState(1);
+  const [rememberFrequencyUnit, setRememberFrequencyUnit] = useState<'day' | 'week'>('day');
   const [activeFont, setActiveFont] = useState('Inter');
   const [isNoteOpen, setIsNoteOpen] = useState(false);
   const [noteText, setNoteText] = useState('');
@@ -179,12 +268,78 @@ const FloatingMenu = ({
   const [savedRange, setSavedRange] = useState<Range | null>(null);
   
   const [isMoveMode, setIsMoveMode] = useState(false);
-  const [noteOffset, setNoteOffset] = useState({ x: 0, y: 0 });
+  const [noteOffset, setNoteOffset] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('luvia_menu_offset');
+      if (saved) {
+        try { return JSON.parse(saved); } catch (e) {}
+      }
+    }
+    return { x: 0, y: 0 };
+  });
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('luvia_menu_offset', JSON.stringify(noteOffset));
+    }
+  }, [noteOffset]);
+
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   
-  const [paletteColors, setPaletteColors] = useState(DEFAULT_COLORS);
+  const [paletteColors, setPaletteColors] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('paletteColors');
+      if (saved) {
+        try { return JSON.parse(saved); } catch (e) {}
+      }
+    }
+    return DEFAULT_COLORS;
+  });
+  
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('paletteColors', JSON.stringify(paletteColors));
+    }
+  }, [paletteColors]);
+  const [highlightPaletteColors, setHighlightPaletteColors] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('highlightPaletteColors');
+      if (saved) {
+        try { return JSON.parse(saved); } catch (e) {}
+      }
+    }
+    return [
+      { name: 'Amarillo', value: 'rgba(250, 204, 21, 0.4)' },
+      { name: 'Rosa', value: 'rgba(233, 30, 99, 0.4)' },
+      { name: 'Verde', value: 'rgba(16, 185, 129, 0.4)' },
+      { name: 'Azul', value: 'rgba(14, 165, 233, 0.4)' },
+      { name: 'Violeta', value: 'rgba(139, 92, 246, 0.4)' },
+    ];
+  });
+  
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('highlightPaletteColors', JSON.stringify(highlightPaletteColors));
+    }
+  }, [highlightPaletteColors]);
+
+  const [lastUsedColor, setLastUsedColor] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('luvia_last_used_color') || '#EF4444';
+    }
+    return '#EF4444';
+  });
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('luvia_last_used_color', lastUsedColor);
+    }
+  }, [lastUsedColor]);
+
   const [colorToDelete, setColorToDelete] = useState<string | null>(null);
+  const [highlightColorToDelete, setHighlightColorToDelete] = useState<string | null>(null);
+  const highlightInputRef = useRef<HTMLInputElement>(null);
   
   const noteEditorRef = useRef<HTMLDivElement>(null);
   const colorInputRef = useRef<HTMLInputElement>(null);
@@ -212,23 +367,34 @@ const FloatingMenu = ({
       
       const checkBounds = () => {
         const rect = node.getBoundingClientRect();
-        const padding = 16;
+        const headerSafeZone = 80; // Account for the app header
+        const horizontalPadding = 16;
         let dx = 0;
         let dy = 0;
 
-        if (rect.left < padding) {
-          dx = padding - rect.left;
-        } else if (rect.right > window.innerWidth - padding) {
-          dx = (window.innerWidth - padding) - rect.right;
+        // Horizontal correction
+        if (rect.left < horizontalPadding) {
+          dx = horizontalPadding - rect.left;
+        } else if (rect.right > window.innerWidth - horizontalPadding) {
+          dx = (window.innerWidth - horizontalPadding) - rect.right;
         }
 
-        if (rect.top < padding) {
-          // If the menu hits the top of the viewport, push it down so it stays visible
-          dy = padding - rect.top;
+        // Vertical correction (only if not flipping or if note is open)
+        if (isNoteOpen) {
+          if (rect.top < headerSafeZone) dy = headerSafeZone - rect.top;
+          else if (rect.bottom > window.innerHeight - horizontalPadding) dy = (window.innerHeight - horizontalPadding) - rect.bottom;
+        } else if (rect.top < headerSafeZone) {
+          // If we're not in a note but hitting the top, the transform flipping below 
+          // (dynamic translateY) will handle most cases, but we can add minor dy correction here if needed
+          dy = headerSafeZone - rect.top;
         }
 
         if (dx !== 0 || dy !== 0) {
-          node.style.transform = isNoteOpen ? `translate(-50%, -50%) translate(${noteOffset.x + dx}px, ${noteOffset.y + dy}px)` : `translateX(-50%) translateY(-100%) translate(${noteOffset.x + dx}px, ${noteOffset.y + dy}px)`;
+          const baseTransform = isNoteOpen 
+            ? `translate(-50%, -50%)` 
+            : `translateX(-50%) ${rect.top < headerSafeZone ? 'translateY(10px)' : 'translateY(-100%)'}`;
+          
+          node.style.transform = `${baseTransform} translate(${noteOffset.x + dx}px, ${noteOffset.y + dy}px)`;
         }
       };
 
@@ -328,10 +494,10 @@ const FloatingMenu = ({
 
       if (isMoveMode) {
         const step = 20;
-        if (e.key === 'ArrowUp') { e.preventDefault(); setNoteOffset(p => ({ ...p, y: p.y - step })); }
-        if (e.key === 'ArrowDown') { e.preventDefault(); setNoteOffset(p => ({ ...p, y: p.y + step })); }
-        if (e.key === 'ArrowLeft') { e.preventDefault(); setNoteOffset(p => ({ ...p, x: p.x - step })); }
-        if (e.key === 'ArrowRight') { e.preventDefault(); setNoteOffset(p => ({ ...p, x: p.x + step })); }
+        if (e.key === 'ArrowUp') { e.preventDefault(); setNoteOffset((p: {x: number, y: number}) => ({ ...p, y: p.y - step })); }
+        if (e.key === 'ArrowDown') { e.preventDefault(); setNoteOffset((p: {x: number, y: number}) => ({ ...p, y: p.y + step })); }
+        if (e.key === 'ArrowLeft') { e.preventDefault(); setNoteOffset((p: {x: number, y: number}) => ({ ...p, x: p.x - step })); }
+        if (e.key === 'ArrowRight') { e.preventDefault(); setNoteOffset((p: {x: number, y: number}) => ({ ...p, x: p.x + step })); }
       }
     };
 
@@ -351,7 +517,7 @@ const FloatingMenu = ({
   }, [isMoveMode, toast]);
 
   const handleNoteMouseDown = (e: React.MouseEvent) => {
-    if (isMoveMode) {
+    if (isMoveMode && !isAnchored && !showRememberMe) {
       setIsDragging(true);
       setDragStart({ x: e.clientX - noteOffset.x, y: e.clientY - noteOffset.y });
     }
@@ -439,22 +605,87 @@ const FloatingMenu = ({
     setLinkUrl('');
     setSavedRange(null);
   };
+  const [reminderSourceText, setReminderSourceText] = useState('');
+  const [reminderSavedRange, setReminderSavedRange] = useState<Range | null>(null);
 
+  const handleRememberMeButtonClick = () => {
+    // Capture selected text before showing UI (selection might change)
+    const sel = window.getSelection();
+    const selText = sel?.toString().trim() || '';
+    setReminderSourceText(selText);
+    if (sel && sel.rangeCount > 0) {
+      setReminderSavedRange(sel.getRangeAt(0).cloneRange());
+    }
+    setShowRememberMe(true);
+    // setIsMoveMode(false); // User doesn't want move mode for reminders
+    setShowHighlightSelector(false);
+  };
+
+  const applyRememberMe = () => {
+    if (rememberPrompt.trim() && rememberReveal.trim() && reminderSavedRange && reminderSourceText && editorRef.current) {
+      let finalType = rememberIntervalType;
+      let finalValue = rememberIntervalValue;
+
+      if (rememberScheduleMode === 'frequency') {
+        if (rememberFrequencyUnit === 'day') {
+          finalType = 'hour';
+          finalValue = Math.max(0.1, 24 / rememberFrequencyValue);
+        } else {
+          finalType = 'day';
+          finalValue = Math.max(0.1, 7 / rememberFrequencyValue);
+        }
+      }
+
+      const markerId = `reminder-${Math.random().toString(36).substr(2, 6)}`;
+      const selection = window.getSelection();
+      if (selection) {
+        selection.removeAllRanges();
+        selection.addRange(reminderSavedRange);
+        document.execCommand('insertHTML', false, `<mark class="luvia-reminder-mark" data-reminder="true" data-reminder-id="${markerId}" style="background:rgba(250,204,21,0.25);border-radius:4px;padding:1px 3px;border-bottom:2px solid rgba(250,204,21,0.7);" title="Recordatorio: ${rememberPrompt}">${reminderSourceText} 🔔</mark>`);
+        if (editorRef.current) setContent(editorRef.current.innerHTML);
+        
+        window.dispatchEvent(new CustomEvent('luvia-schedule-flashcard', {
+          detail: {
+            prompt: rememberPrompt,
+            reveal: rememberReveal,
+            intervalType: finalType,
+            intervalValue: finalValue,
+            durationSeconds: rememberDuration,
+            sourceText: reminderSourceText || undefined,
+            markerId: markerId
+          }
+        }));
+      }
+
+      const freqLabel = rememberScheduleMode === 'frequency' 
+        ? `${rememberFrequencyValue} veces por ${rememberFrequencyUnit === 'day' ? 'día' : 'semana'}`
+        : `${rememberIntervalValue} ${rememberIntervalType === 'second' ? 'seg' : rememberIntervalType === 'minute' ? 'min' : rememberIntervalType === 'hour' ? 'hora(s)' : rememberIntervalType === 'day' ? 'día(s)' : 'semana(s)'}`;
+
+      toast({ title: "🔔 Recordatorio programado", description: `Configurado: ${freqLabel}.` });
+    }
+    
+    setShowRememberMe(false);
+    setRememberPrompt('');
+    setRememberReveal('');
+    setReminderSourceText('');
+    setReminderSavedRange(null);
+  };
   const execCommand = (command: string, value: string = '') => {
     if (editorRef.current) {
-      editorRef.current.focus();
+      if (document.activeElement !== editorRef.current) {
+        editorRef.current.focus();
+      }
     }
     
     const selection = window.getSelection();
-    if (!selection || selection.rangeCount === 0) return;
-    const range = selection.getRangeAt(0).cloneRange();
+    if (!selection) return;
+    const range = selection.rangeCount > 0 ? selection.getRangeAt(0).cloneRange() : null;
 
-    if (command === 'insertTable') {
+    if (command === 'insertTable' && range) {
       const selectedText = selection.toString().trim();
       let tableHtml = '';
 
       if (selectedText) {
-        // Convert selected text to table
         const rowsText = selectedText.split(/\r?\n/).map(row => row.split(/\t| {2,}/));
         const maxCols = Math.max(...rowsText.map(r => r.length));
         
@@ -472,27 +703,30 @@ const FloatingMenu = ({
           <p><br></p>
         `;
       } else {
-        // This is handled by insertSizedTable now for empty tables
         return;
       }
       
       selection.removeAllRanges();
       selection.addRange(range);
       document.execCommand('insertHTML', false, tableHtml);
-    } else if (command === 'insertHorizontalRule') {
+    } else if (command === 'insertHorizontalRule' && range) {
       selection.removeAllRanges();
       selection.addRange(range);
       document.execCommand('insertHorizontalRule', false);
     } else if (command === 'fontName') {
-      selection.removeAllRanges();
-      selection.addRange(range);
-      const span = document.createElement('span');
-      span.style.fontFamily = value;
-      try {
-        const content = range.extractContents();
-        span.appendChild(content);
-        range.insertNode(span);
-      } catch (e) {
+      if (range) {
+        selection.removeAllRanges();
+        selection.addRange(range);
+        const span = document.createElement('span');
+        span.style.fontFamily = value;
+        try {
+          const content = range.extractContents();
+          span.appendChild(content);
+          range.insertNode(span);
+        } catch (e) {
+          document.execCommand('fontName', false, value);
+        }
+      } else {
         document.execCommand('fontName', false, value);
       }
     } else if (command === 'fontSize') {
@@ -502,11 +736,13 @@ const FloatingMenu = ({
         Array.from(fontEls).forEach(el => {
           el.removeAttribute('size');
           (el as HTMLElement).style.fontSize = `${value}px`;
-          // If the element is now just a font tag with a style, we might want to change it to a span,
-          // but just adding the style to the font tag works perfectly in modern browsers.
         });
       }
     } else {
+      if (range) {
+        selection.removeAllRanges();
+        selection.addRange(range);
+      }
       document.execCommand(command, false, value);
     }
     
@@ -575,7 +811,9 @@ const FloatingMenu = ({
     }
   };
 
-  const isTopHeavy = !isAnchored && position.y < 400;
+  const headerSafeZone = 80;
+  const isTooHigh = !isAnchored && (position.y < headerSafeZone + 100);
+  const isTopHeavy = !isAnchored && (position.y < 450);
 
   const handleNoteInput = () => {
     if (noteEditorRef.current) {
@@ -602,11 +840,12 @@ const FloatingMenu = ({
   };
 
   const toggleMoveModeViaDoubleClick = () => {
-    setIsMoveMode(prev => !prev);
+    if (isAnchored || showRememberMe) return;
+    setIsMoveMode((prev: boolean) => !prev);
   };
 
   const handleDeleteColor = (value: string) => {
-    setPaletteColors(prev => prev.filter(c => c.value !== value));
+    setPaletteColors((prev: any[]) => prev.filter((c: any) => c.value !== value));
     setColorToDelete(null);
     toast({ title: "Color eliminado de la paleta" });
   };
@@ -624,7 +863,9 @@ const FloatingMenu = ({
         style={{ 
           left: isNoteOpen ? '50%' : (isAnchored ? 'auto' : position.x), 
           top: isNoteOpen ? '50%' : (isAnchored ? 'auto' : position.y), 
-          transform: isNoteOpen ? `translate(-50%, -50%) translate(${noteOffset.x}px, ${noteOffset.y}px)` : (isAnchored ? 'none' : `translateX(-50%) translateY(-100%) translate(${noteOffset.x}px, ${noteOffset.y}px)`),
+          transform: isNoteOpen 
+            ? `translate(-50%, -50%) translate(${noteOffset.x}px, ${noteOffset.y}px)` 
+            : (isAnchored ? 'none' : `translateX(-50%) ${isTooHigh ? 'translateY(20px)' : 'translateY(-100%)'} translate(${noteOffset.x}px, ${noteOffset.y}px)`),
         }}
         onMouseDown={(e) => e.stopPropagation()}
       >
@@ -777,7 +1018,10 @@ const FloatingMenu = ({
         ) : (
           <div 
             onMouseDown={handleNoteMouseDown}
-            onDoubleClick={toggleMoveModeViaDoubleClick}
+            onDoubleClick={() => {
+              if (isAnchored) return; // Disable move mode on double click if anchored
+              toggleMoveModeViaDoubleClick();
+            }}
             className={cn(
               "flex items-center px-1 py-1 transition-all duration-300",
               !isAnchored ? "bg-[#121212] border border-white/10 rounded-xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.5)] backdrop-blur-md" : "w-full justify-center bg-transparent border-none",
@@ -1101,18 +1345,40 @@ const FloatingMenu = ({
                 <input 
                   type="text"
                   value={fontSize}
+                  onMouseDown={() => {
+                    const selection = window.getSelection();
+                    if (selection && selection.rangeCount > 0) {
+                      setSavedRange(selection.getRangeAt(0).cloneRange());
+                    }
+                  }}
                   onChange={(e) => {
                     const val = e.target.value.replace(/\D/g, '');
                     if (val === '') {
                       (setFontSize as any)('');
                     } else {
-                      const num = parseInt(val);
-                      setFontSize(num);
-                      if (num > 0) execCommand('fontSize', num.toString());
+                      setFontSize(parseInt(val));
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                       e.preventDefault();
+                       if (savedRange && fontSize) {
+                         const selection = window.getSelection();
+                         selection?.removeAllRanges();
+                         selection?.addRange(savedRange);
+                         execCommand('fontSize', fontSize.toString());
+                         editorRef.current?.focus();
+                       }
                     }
                   }}
                   onBlur={() => {
                     if (!fontSize || (fontSize as any) === '') setFontSize(12);
+                    else if (savedRange) {
+                       const selection = window.getSelection();
+                       selection?.removeAllRanges();
+                       selection?.addRange(savedRange);
+                       execCommand('fontSize', fontSize.toString());
+                    }
                   }}
                   className="w-10 bg-white/5 border border-white/10 rounded-lg text-[11px] font-black text-center py-1 text-white/80 focus:border-primary/50 outline-none transition-all italic"
                 />
@@ -1194,6 +1460,93 @@ const FloatingMenu = ({
                   <TooltipTrigger asChild>
                     <button 
                       onClick={() => {
+                        setShowHighlightSelector(!showHighlightSelector);
+                        setShowColorSelector(false);
+                        setShowBlockSelector(false);
+                        setShowFontSelector(false);
+                        setShowFontSizeSelector(false);
+                        setShowAlignmentSelector(false);
+                        setShowColumnSelector(false);
+                        setShowLinkInput(false);
+                      }}
+                      className={cn(
+                        "flex items-center gap-0.5 p-2 rounded-lg transition-all",
+                        showHighlightSelector ? "bg-primary text-white" : "text-white/40 hover:text-white hover:bg-white/5"
+                      )}
+                    >
+                      <Highlighter size={16} />
+                      <ChevronDown size={10} className="opacity-40" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent className="bg-black text-[9px] font-black uppercase">Resaltado</TooltipContent>
+                </Tooltip>
+                
+                {showHighlightSelector && (
+                  <div className={cn(
+                    "absolute bg-[#111] border border-white/10 rounded-[1.5rem] shadow-[0_20px_50px_rgba(0,0,0,0.5)] p-6 grid grid-cols-4 gap-3 animate-in fade-in zoom-in-95 z-[60] w-max",
+                    isAnchored || isTopHeavy ? "top-full mt-2 left-0" : "bottom-full mb-2 left-0"
+                  )}>
+                    <p className="col-span-4 text-[9px] font-black uppercase tracking-widest text-white/20 mb-2 italic px-1 text-center">COLORES DE RESALTADO</p>
+                    {highlightPaletteColors.map((color: {name: string, value: string}) => (
+                      <div key={color.value} className="relative group/hcolor">
+                        <button
+                          onClick={() => {
+                            execCommand('hiliteColor', color.value);
+                            setShowHighlightSelector(false);
+                          }}
+                          className="w-10 h-10 rounded-xl border border-white/5 hover:scale-110 hover:rotate-6 active:scale-95 transition-all shadow-lg"
+                          style={{ backgroundColor: color.value }}
+                          title={color.name}
+                        />
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setHighlightPaletteColors((prev: any[]) => prev.filter((c: any) => c.value !== color.value));
+                          }}
+                          className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-destructive rounded-full flex items-center justify-center text-white opacity-0 group-hover/hcolor:opacity-100 transition-all hover:scale-110 shadow-lg z-10"
+                        >
+                          <X size={10} strokeWidth={4} />
+                        </button>
+                      </div>
+                    ))}
+                    <button 
+                      onClick={() => highlightInputRef.current?.click()}
+                      className="w-10 h-10 rounded-xl border border-white/5 bg-white/5 hover:bg-white/10 flex items-center justify-center text-white/40 hover:text-white transition-all shadow-lg hover:rotate-6"
+                      title="Nuevo color de resaltado"
+                    >
+                      <Plus size={20} />
+                    </button>
+                    <input 
+                      type="color" 
+                      ref={highlightInputRef} 
+                      className="hidden" 
+                      onChange={(e) => {
+                        const newColor = e.target.value;
+                        const rgba = hexToRgba(newColor, 0.4);
+                        execCommand('hiliteColor', rgba);
+                        setHighlightPaletteColors((prev: any[]) => [...prev, { name: 'Resalte Nuevo', value: rgba }]);
+                        setShowHighlightSelector(false);
+                      }} 
+                    />
+                    <button 
+                      onClick={() => {
+                         execCommand('hiliteColor', 'transparent');
+                         setShowHighlightSelector(false);
+                      }}
+                      className="w-10 h-10 rounded-xl border border-dashed border-white/20 flex items-center justify-center hover:bg-white/5 transition-all hover:rotate-6"
+                      title="Quitar resaltado"
+                    >
+                      <X size={16} className="text-white/40" />
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div className="relative">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button 
+                      onClick={() => {
                         setShowAlignmentSelector(!showAlignmentSelector);
                         setShowBlockSelector(false);
                         setShowFontSelector(false);
@@ -1202,6 +1555,7 @@ const FloatingMenu = ({
                         setShowColumnSelector(false);
                         setShowLinkInput(false);
                       }}
+                      onDoubleClick={(e) => e.stopPropagation()}
                       className={cn(
                         "flex items-center gap-0.5 p-2 rounded-lg transition-all",
                         showAlignmentSelector ? "bg-primary/20 text-primary" : "text-white/40 hover:text-white hover:bg-white/5"
@@ -1211,21 +1565,44 @@ const FloatingMenu = ({
                       <ChevronDown size={10} className="opacity-40" />
                     </button>
                   </TooltipTrigger>
-                  <TooltipContent className="bg-black text-[9px] font-black uppercase">Alineación</TooltipContent>
+                  <TooltipContent className="bg-black text-[9px] font-black uppercase">Alineación / Doble click en opciones para atajos</TooltipContent>
                 </Tooltip>
                 
                 {showAlignmentSelector && (
                   <div className={cn(
-                    "absolute bg-[#1a1a1a] border border-white/10 rounded-xl shadow-2xl p-1 flex items-center gap-1 animate-in fade-in zoom-in-95 z-[60]",
+                     "absolute bg-[#1a1a1a] border border-white/10 rounded-xl shadow-2xl p-1 flex items-center gap-1 animate-in fade-in zoom-in-95 z-[60]",
                     isAnchored || isTopHeavy ? "top-full mt-2 left-0" : "bottom-full mb-2 left-0"
                   )}>
-                    <button onClick={() => { execCommand('justifyLeft'); setShowAlignmentSelector(false); }} className="p-2 hover:bg-white/10 rounded-lg text-white/60 hover:text-white" title="Izquierda"><AlignLeft size={16} /></button>
-                    <button onClick={() => { execCommand('justifyCenter'); setShowAlignmentSelector(false); }} className="p-2 hover:bg-white/10 rounded-lg text-white/60 hover:text-white" title="Centro"><AlignCenter size={16} /></button>
-                    <button onClick={() => { execCommand('justifyRight'); setShowAlignmentSelector(false); }} className="p-2 hover:bg-white/10 rounded-lg text-white/60 hover:text-white" title="Derecha"><AlignRight size={16} /></button>
-                    <button onClick={() => { execCommand('justifyFull'); setShowAlignmentSelector(false); }} className="p-2 hover:bg-white/10 rounded-lg text-white/60 hover:text-white" title="Justificado"><AlignJustify size={16} /></button>
+                    {[
+                      { icon: <AlignLeft size={16} />, cmd: 'justifyLeft', label: 'Izquierda' },
+                      { icon: <AlignCenter size={16} />, cmd: 'justifyCenter', label: 'Centro' },
+                      { icon: <AlignRight size={16} />, cmd: 'justifyRight', label: 'Derecha' },
+                      { icon: <AlignJustify size={16} />, cmd: 'justifyFull', label: 'Justificado' },
+                    ].map(item => (
+                      <button 
+                        key={item.label}
+                        onClick={() => { execCommand(item.cmd); }} 
+                        onDoubleClick={(e) => {
+                          e.stopPropagation();
+                          setRecordingAlignmentFor(item.label);
+                        }}
+                        className={cn(
+                          "p-2 hover:bg-white/10 rounded-lg transition-all relative group/align-item",
+                          recordingAlignmentFor === item.label ? "bg-primary text-white" : "text-white/60 hover:text-white"
+                        )} 
+                        title={`${item.label} ${alignmentShortcuts[item.label] ? `(${alignmentShortcuts[item.label]})` : '(Doble click para atajo)'}`}
+                      >
+                        {item.icon}
+                        {recordingAlignmentFor === item.label && (
+                          <div className="absolute -bottom-1 -right-1 w-2 h-2 bg-yellow-400 rounded-full animate-pulse" />
+                        )}
+                      </button>
+                    ))}
                   </div>
                 )}
               </div>
+
+
 
               <div className="relative">
                 <Tooltip>
@@ -1341,6 +1718,161 @@ const FloatingMenu = ({
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <button 
+                      onClick={handleRememberMeButtonClick}
+                      className={cn(
+                        "p-2 rounded-lg transition-all text-yellow-400 hover:bg-yellow-400/20",
+                        showRememberMe ? "bg-yellow-400/20" : ""
+                      )}
+                    >
+                      <Bell size={16} />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent className="bg-yellow-400 text-yellow-950 text-[9px] font-black uppercase">Recordarme (Flashcard)</TooltipContent>
+                </Tooltip>
+                
+                {showRememberMe && (
+                  <div className={cn(
+                    "absolute right-0 bg-[#111] border border-yellow-400/20 rounded-[1.5rem] shadow-[0_20px_50px_rgba(250,204,21,0.1)] p-6 flex flex-col gap-4 animate-in fade-in zoom-in-95 z-[70] w-[300px]",
+                    isAnchored ? "top-full mt-3" : "bottom-full mb-3"
+                  )}>
+                    <p className="text-[9px] font-black uppercase tracking-widest text-yellow-400/60 mb-1 italic">CREAR RECORDATORIO</p>
+                    
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-[10px] font-bold text-white/50">Texto de Notificación</label>
+                      <textarea 
+                        value={rememberPrompt}
+                        onChange={(e) => setRememberPrompt(e.target.value)}
+                        placeholder="Ej: ¿Cómo se dice hola en inglés?"
+                        className="bg-black/50 border border-white/10 rounded-xl p-3 text-xs text-white/90 focus:border-yellow-400/50 outline-none resize-none h-16 transition-all"
+                      />
+                    </div>
+                    
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-[10px] font-bold text-white/50">Texto de Revelación</label>
+                      <textarea 
+                        value={rememberReveal}
+                        onChange={(e) => setRememberReveal(e.target.value)}
+                        placeholder="Ej: Hola en inglés es Hi"
+                        className="bg-black/50 border border-white/10 rounded-xl p-3 text-xs text-secondary focus:border-yellow-400/50 outline-none resize-none h-16 transition-all"
+                      />
+                    </div>
+
+                    <div className="flex flex-col gap-2">
+                       <label className="text-[10px] font-bold text-white/50">Programación</label>
+                       <div className="flex p-1 bg-black/40 border border-white/5 rounded-xl gap-1">
+                          <button 
+                            onClick={() => setRememberScheduleMode('interval')}
+                            className={cn(
+                              "flex-1 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-tighter transition-all",
+                              rememberScheduleMode === 'interval' ? "bg-yellow-400 text-yellow-950 shadow-lg" : "text-white/30 hover:text-white"
+                            )}
+                          >Intervalo</button>
+                          <button 
+                             onClick={() => setRememberScheduleMode('frequency')}
+                             className={cn(
+                               "flex-1 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-tighter transition-all",
+                               rememberScheduleMode === 'frequency' ? "bg-yellow-400 text-yellow-950 shadow-lg" : "text-white/30 hover:text-white"
+                             )}
+                          >Frecuencia</button>
+                       </div>
+
+                       {rememberScheduleMode === 'interval' ? (
+                         <div className="grid grid-cols-2 gap-3 animate-in fade-in slide-in-from-top-1 duration-300">
+                           <div className="flex flex-col gap-1.5">
+                             <div className="flex bg-black/50 border border-white/10 rounded-xl overflow-hidden">
+                               <input 
+                                 type="number"
+                                 min="1"
+                                 value={rememberIntervalValue}
+                                 onChange={(e) => setRememberIntervalValue(Number(e.target.value) || 1)}
+                                 className="bg-transparent text-xs text-center w-full outline-none p-2 border-r border-white/10 text-white"
+                               />
+                               <select 
+                                 value={rememberIntervalType}
+                                 onChange={(e) => setRememberIntervalType(e.target.value)}
+                                 className="bg-transparent text-[10px] p-2 outline-none appearance-none text-center text-white/70 font-bold"
+                               >
+                                 <option className="bg-[#111]" value="second">Seg</option>
+                                 <option className="bg-[#111]" value="minute">Min</option>
+                                 <option className="bg-[#111]" value="hour">Hora</option>
+                                 <option className="bg-[#111]" value="day">Día</option>
+                                 <option className="bg-[#111]" value="week">Sem</option>
+                               </select>
+                             </div>
+                             <span className="text-[8px] text-white/20 font-bold uppercase text-center">Cada X tiempo</span>
+                           </div>
+                           
+                           <div className="flex flex-col gap-1.5">
+                             <div className="flex items-center bg-black/50 border border-white/10 rounded-xl px-2">
+                               <input 
+                                 type="number"
+                                 min="1"
+                                 value={rememberDuration}
+                                 onChange={(e) => setRememberDuration(Number(e.target.value) || 10)}
+                                 className="bg-transparent text-xs w-full text-center outline-none py-2 text-white"
+                               />
+                               <span className="text-[10px] text-white/30 font-bold ml-1">seg</span>
+                             </div>
+                             <span className="text-[8px] text-white/20 font-bold uppercase text-center">Visible por</span>
+                           </div>
+                         </div>
+                       ) : (
+                         <div className="grid grid-cols-2 gap-3 animate-in fade-in slide-in-from-top-1 duration-300">
+                           <div className="flex flex-col gap-1.5">
+                             <div className="flex bg-black/50 border border-white/10 rounded-xl overflow-hidden">
+                               <input 
+                                 type="number"
+                                 min="1"
+                                 value={rememberFrequencyValue}
+                                 onChange={(e) => setRememberFrequencyValue(Number(e.target.value) || 1)}
+                                 className="bg-transparent text-xs text-center w-full outline-none p-2 border-r border-white/10 text-white"
+                               />
+                               <select 
+                                 value={rememberFrequencyUnit}
+                                 onChange={(e) => setRememberFrequencyUnit(e.target.value as any)}
+                                 className="bg-transparent text-[10px] p-2 outline-none appearance-none text-center text-white/70 font-bold"
+                               >
+                                 <option className="bg-[#111]" value="day">Día</option>
+                                 <option className="bg-[#111]" value="week">Sem</option>
+                               </select>
+                             </div>
+                             <span className="text-[8px] text-white/20 font-bold uppercase text-center">Veces por periodo</span>
+                           </div>
+
+                           <div className="flex flex-col gap-1.5">
+                             <div className="flex items-center bg-black/50 border border-white/10 rounded-xl px-2">
+                               <input 
+                                 type="number"
+                                 min="1"
+                                 value={rememberDuration}
+                                 onChange={(e) => setRememberDuration(Number(e.target.value) || 10)}
+                                 className="bg-transparent text-xs w-full text-center outline-none py-2 text-white"
+                               />
+                               <span className="text-[10px] text-white/30 font-bold ml-1">seg</span>
+                             </div>
+                             <span className="text-[8px] text-white/20 font-bold uppercase text-center">Visible por</span>
+                           </div>
+                         </div>
+                       )}
+                    </div>
+
+                    <button 
+                      onClick={applyRememberMe}
+                      className="w-full bg-yellow-400 text-yellow-950 font-black text-xs py-3 rounded-xl uppercase tracking-widest mt-2 hover:bg-yellow-300 transition-colors"
+                    >
+                      Programar Alarma
+                    </button>
+                    
+                    <button onClick={() => setShowRememberMe(false)} className="absolute top-4 right-4 text-white/20 hover:text-white transition-colors">
+                      <X size={14} />
+                    </button>
+                  </div>
+                )}
+              </div>
+              <div className="relative">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button 
                       onClick={() => {
                         setShowColorSelector(!showColorSelector);
                         setShowBlockSelector(false);
@@ -1350,6 +1882,13 @@ const FloatingMenu = ({
                         setShowColumnSelector(false);
                         setShowLinkInput(false);
                       }} 
+                      onDoubleClick={(e) => {
+                        e.stopPropagation();
+                        if (lastUsedColor) {
+                          execCommand('foreColor', lastUsedColor);
+                          toast({ title: "Color aplicado", description: `Se aplicó el último color usado: ${lastUsedColor}` });
+                        }
+                      }}
                       className={cn(
                         "p-2 rounded-lg transition-all",
                         showColorSelector ? "bg-primary/20 text-primary" : "text-white/40 hover:text-white hover:bg-white/5"
@@ -1358,7 +1897,7 @@ const FloatingMenu = ({
                       <Palette size={16} />
                     </button>
                   </TooltipTrigger>
-                  <TooltipContent className="bg-black text-[9px] font-black uppercase">Color de texto</TooltipContent>
+                  <TooltipContent className="bg-black text-[9px] font-black uppercase">Color de texto / Doble click para añadir último color</TooltipContent>
                 </Tooltip>
                 
                 {showColorSelector && (
@@ -1367,11 +1906,12 @@ const FloatingMenu = ({
                     isAnchored ? "top-full mt-3" : "bottom-full mb-3"
                   )}>
                     <p className="col-span-6 text-[9px] font-black uppercase tracking-widest text-white/20 mb-2 italic px-1">COLORES FAVORITOS</p>
-                    {paletteColors.map(color => (
+                    {paletteColors.map((color: {name: string, value: string}) => (
                       <div key={color.value} className="relative group/color">
                         <button
                           onClick={() => {
                             execCommand('foreColor', color.value);
+                            setLastUsedColor(color.value);
                             setShowColorSelector(false);
                           }}
                           className="w-10 h-10 rounded-xl border border-white/5 hover:scale-110 active:scale-95 transition-all shadow-lg hover:shadow-primary/20"
@@ -1381,7 +1921,8 @@ const FloatingMenu = ({
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            setColorToDelete(color.value);
+                            setPaletteColors((prev: any[]) => prev.filter((c: any) => c.value !== color.value));
+                            toast({ title: "Color eliminado" });
                           }}
                           className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-destructive rounded-full flex items-center justify-center text-white opacity-0 group-hover/color:opacity-100 transition-opacity hover:scale-110 shadow-lg z-10"
                         >
@@ -1403,10 +1944,11 @@ const FloatingMenu = ({
                       onChange={(e) => {
                         const newColor = e.target.value;
                         execCommand('foreColor', newColor);
+                        setLastUsedColor(newColor);
                         
                         // Añadir a favoritos si no existe
-                        setPaletteColors(prev => {
-                          if (prev.find(c => c.value.toLowerCase() === newColor.toLowerCase())) return prev;
+                        setPaletteColors((prev: any[]) => {
+                          if (prev.find((c: any) => c.value.toLowerCase() === newColor.toLowerCase())) return prev;
                           return [...prev, { name: 'Personalizado', value: newColor }];
                         });
                         

@@ -5,7 +5,6 @@ import { Send, User, Bot, Archive, History, ChevronDown, Trash2, Pencil, X } fro
 import { studyAssistantChat } from '@/ai/flows/study-assistant-chat-flow';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
 import { ChatMessage, ChatSession } from '@/app/page';
@@ -25,6 +24,11 @@ interface ChatViewProps {
   setPastSessions: (sessions: ChatSession[]) => void;
 }
 
+const initialAssistantMessage: ChatMessage = { 
+  role: 'assistant', 
+  content: 'Hello! I am Luvia, your AI study assistant. Ask me anything about your current notes.' 
+};
+
 const ChatView = ({ noteContent, history, setHistory, pastSessions, setPastSessions }: ChatViewProps) => {
   const { toast } = useToast();
   const [input, setInput] = useState('');
@@ -33,18 +37,13 @@ const ChatView = ({ noteContent, history, setHistory, pastSessions, setPastSessi
   const [editingTitle, setEditingTitle] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const initialAssistantMessage: ChatMessage = { 
-    role: 'assistant', 
-    content: 'Hello! I am Luvia, your AI study assistant. Ask me anything about your current notes.' 
-  };
-
-  const messages = history.length > 0 ? history : [initialAssistantMessage];
+  const messages = React.useMemo(() => history.length > 0 ? history : [initialAssistantMessage], [history]);
 
   useEffect(() => {
     if (scrollRef.current) {
-      scrollRef.current.scrollIntoView({ behavior: 'smooth' });
+      scrollRef.current.scrollIntoView({ behavior: 'auto', block: 'end' });
     }
-  }, [messages, isLoading]);
+  }, [messages.length, isLoading]); // Only scroll when message count changes or loading starts
 
   // Helper to clean HTML from notes before sending to AI
   const stripHtml = (html: string) => {
@@ -153,7 +152,7 @@ const ChatView = ({ noteContent, history, setHistory, pastSessions, setPastSessi
         </Button>
       </div>
 
-      <ScrollArea className="flex-1 p-6">
+      <div className="flex-1 overflow-y-auto p-6 scroll-smooth">
         <div className="w-full">
           {/* Past Sessions Accordion */}
           {pastSessions.length > 0 && (
@@ -277,10 +276,10 @@ const ChatView = ({ noteContent, history, setHistory, pastSessions, setPastSessi
                 </div>
               </div>
             )}
-            <div ref={scrollRef} />
+            <div ref={scrollRef} className="h-px w-full" />
           </div>
         </div>
-      </ScrollArea>
+      </div>
 
       <div className="p-6 border-t border-border bg-card">
         <div className="w-full">

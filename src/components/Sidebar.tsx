@@ -318,7 +318,7 @@ const Sidebar = ({
                 onChange={(e) => setEditValue(e.target.value)}
                 onBlur={saveEdit}
                 onKeyDown={handleKeyDown}
-                className="bg-background border border-primary text-[10px] px-1 rounded outline-none w-full"
+                className="bg-background border border-primary text-[10px] px-1 rounded outline-none w-full text-foreground"
                 onClick={(e) => e.stopPropagation()}
               />
             ) : (
@@ -358,7 +358,7 @@ const Sidebar = ({
                 <NoteIcon iconName={sub.icon} size={14} />
               </div>
               {editingId === sub.id ? (
-                <input ref={editInputRef} value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={saveEdit} onKeyDown={handleKeyDown} className="bg-background border border-primary text-xs px-1 rounded outline-none w-full" onClick={(e) => e.stopPropagation()} />
+                <input ref={editInputRef} value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={saveEdit} onKeyDown={handleKeyDown} className="bg-background border border-primary text-xs px-1 rounded outline-none w-full text-foreground" onClick={(e) => e.stopPropagation()} />
               ) : (
               <span className="text-sm font-bold truncate flex-1 min-w-0">
                 {sub.name.length > 20 ? `${sub.name.substring(0, 20)}...` : sub.name}
