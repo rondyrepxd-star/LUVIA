@@ -407,10 +407,17 @@ const Notebook = ({
     
     if (hasTextSelection && !isAnchored) {
       if (menuTimeoutRef.current) clearTimeout(menuTimeoutRef.current);
-      const rect = range.getBoundingClientRect();
+      
+      // Fix: Get rect from getClientRects to snap to the FIRST line of selection
+      // This prevents the menu from hiding in corners when multi-line is selected
+      const rects = range.getClientRects();
+      const firstLineRect = rects.length > 0 ? rects[0] : range.getBoundingClientRect();
+      
+      const calcX = firstLineRect.left + firstLineRect.width / 2;
+
       setMenuPosition({
-        x: rect.left + rect.width / 2,
-        y: rect.top - 10
+        x: calcX,
+        y: firstLineRect.top - 10
       });
       setShowFloatingMenu(true);
       setShowTableToolbar(false);
@@ -816,7 +823,11 @@ const Notebook = ({
 
   useEffect(() => {
     if (editorRef.current && editorRef.current.innerHTML !== content) {
-      editorRef.current.innerHTML = content;
+      const currentClean = editorRef.current.innerHTML.replace(/\s*active-image/g, '');
+      const contentClean = content.replace(/\s*active-image/g, '');
+      if (currentClean !== contentClean) {
+        editorRef.current.innerHTML = content;
+      }
     }
   }, [content]);
 
@@ -2037,7 +2048,13 @@ const Notebook = ({
                 setActiveImage(null);
                 editorRef.current?.querySelectorAll('img').forEach(img => img.classList.remove('active-image'));
               }}
-              onUpdate={() => editorRef.current && setContent(editorRef.current.innerHTML)}
+              onUpdate={() => {
+                if (editorRef.current) {
+                  editorRef.current.querySelectorAll('img').forEach(img => img.classList.remove('active-image'));
+                  setContent(editorRef.current.innerHTML);
+                  if (activeImage) activeImage.classList.add('active-image');
+                }
+              }}
             />
           )}
         </div>

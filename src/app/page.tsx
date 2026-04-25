@@ -254,7 +254,11 @@ export default function LuviaApp() {
 
   useEffect(() => {
     if (isInitialLoadDone) {
-      localStorage.setItem('luvia_flashcards', JSON.stringify(flashcards));
+      try {
+        localStorage.setItem('luvia_flashcards', JSON.stringify(flashcards));
+      } catch (e) {
+        console.error('Failed to save flashcards to localStorage', e);
+      }
     }
   }, [flashcards, isInitialLoadDone]);
 
@@ -343,15 +347,19 @@ export default function LuviaApp() {
   useEffect(() => {
     if (!isInitialLoadDone) return;
     
-    localStorage.setItem('luvia_notes', JSON.stringify(notes));
-    localStorage.setItem('luvia_folders', JSON.stringify(folders));
-    localStorage.setItem('luvia_font', notebookFont);
-    localStorage.setItem('luvia_font_size', notebookFontSize.toString());
-    localStorage.setItem('luvia_width', notebookWidth);
-    localStorage.setItem('luvia_sidebar_collapsed', String(isSidebarCollapsed));
-    localStorage.setItem('luvia_spellcheck', String(isSpellcheckEnabled));
-    localStorage.setItem('luvia_theme', appTheme);
-    if (activeNoteId) localStorage.setItem('luvia_active_id', activeNoteId);
+    try {
+      localStorage.setItem('luvia_notes', JSON.stringify(notes));
+      localStorage.setItem('luvia_folders', JSON.stringify(folders));
+      localStorage.setItem('luvia_font', notebookFont);
+      localStorage.setItem('luvia_font_size', notebookFontSize.toString());
+      localStorage.setItem('luvia_width', notebookWidth);
+      localStorage.setItem('luvia_sidebar_collapsed', String(isSidebarCollapsed));
+      localStorage.setItem('luvia_spellcheck', String(isSpellcheckEnabled));
+      localStorage.setItem('luvia_theme', appTheme);
+      if (activeNoteId) localStorage.setItem('luvia_active_id', activeNoteId);
+    } catch (e) {
+      console.warn("localStorage quota exceeded. Consider exporting your data and deleting older notes.", e);
+    }
   }, [notes, folders, activeNoteId, notebookFont, notebookFontSize, notebookWidth, isSidebarCollapsed, isSpellcheckEnabled, appTheme, isInitialLoadDone]);
 
   const activeNote = useMemo(() => 

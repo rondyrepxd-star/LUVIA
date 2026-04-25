@@ -220,6 +220,24 @@ blockquote {
   opacity: 0.3;
 }
 
+/* Notebook Editor Links */
+.editor-content a {
+  color: hsl(var(--primary));
+  text-decoration: underline;
+  text-decoration-color: hsla(var(--primary), 0.4);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 4px;
+  transition: all 0.2s ease-in-out;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.editor-content a:hover {
+  text-decoration-color: hsl(var(--primary));
+  background-color: hsla(var(--primary), 0.1);
+  padding: 0 2px;
+}
+
 /* Notita Highlight */
 .notame-highlight {
   background-color: hsla(var(--primary), 0.2) !important;

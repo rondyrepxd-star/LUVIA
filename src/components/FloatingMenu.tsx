@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { 
   Bold, Italic, Underline, Strikethrough, Link as LinkIcon, 
   Heading1, Heading2, List, ListOrdered, Quote, ChevronDown, ChevronUp,
@@ -360,7 +360,7 @@ const FloatingMenu = ({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [onClose, isAnchored]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!isAnchored && menuRef.current) {
       const node = menuRef.current;
       node.style.transform = isNoteOpen ? `translate(-50%, -50%) translate(${noteOffset.x}px, ${noteOffset.y}px)` : `translateX(-50%) translateY(-100%) translate(${noteOffset.x}px, ${noteOffset.y}px)`;
@@ -372,11 +372,14 @@ const FloatingMenu = ({
         let dx = 0;
         let dy = 0;
 
-        // Horizontal correction
-        if (rect.left < horizontalPadding) {
-          dx = horizontalPadding - rect.left;
-        } else if (rect.right > window.innerWidth - horizontalPadding) {
-          dx = (window.innerWidth - horizontalPadding) - rect.right;
+        const boundsElement = editorRef.current?.parentElement || document.body;
+        const boundsRect = boundsElement.getBoundingClientRect();
+
+        // Horizontal correction using editor boundaries
+        if (rect.left < boundsRect.left + horizontalPadding) {
+          dx = (boundsRect.left + horizontalPadding) - rect.left;
+        } else if (rect.right > boundsRect.right - horizontalPadding) {
+          dx = (boundsRect.right - horizontalPadding) - rect.right;
         }
 
         // Vertical correction (only if not flipping or if note is open)
@@ -395,11 +398,12 @@ const FloatingMenu = ({
             : `translateX(-50%) ${rect.top < headerSafeZone ? 'translateY(10px)' : 'translateY(-100%)'}`;
           
           node.style.transform = `${baseTransform} translate(${noteOffset.x + dx}px, ${noteOffset.y + dy}px)`;
+        } else {
+          node.style.transform = isNoteOpen ? `translate(-50%, -50%) translate(${noteOffset.x}px, ${noteOffset.y}px)` : `translateX(-50%) ${rect.top < headerSafeZone ? 'translateY(10px)' : 'translateY(-100%)'} translate(${noteOffset.x}px, ${noteOffset.y}px)`;
         }
       };
 
-      // Use rAF to wait for any internal state renders to hit the DOM
-      requestAnimationFrame(checkBounds);
+      checkBounds();
     }
   }, [position, isAnchored, isNoteOpen, noteOffset, showBlockSelector, showFontSelector]);
 
@@ -855,17 +859,14 @@ const FloatingMenu = ({
       <div 
         ref={menuRef}
         className={cn(
-          "flex flex-col items-center gap-2 transition-all duration-300",
+          "flex flex-col items-center gap-2",
           (isNoteOpen || !isAnchored) ? "fixed z-50" : "w-full",
           !isAnchored && "floating-menu-container",
           isNoteOpen && "notame-editor-active"
         )}
         style={{ 
           left: isNoteOpen ? '50%' : (isAnchored ? 'auto' : position.x), 
-          top: isNoteOpen ? '50%' : (isAnchored ? 'auto' : position.y), 
-          transform: isNoteOpen 
-            ? `translate(-50%, -50%) translate(${noteOffset.x}px, ${noteOffset.y}px)` 
-            : (isAnchored ? 'none' : `translateX(-50%) ${isTooHigh ? 'translateY(20px)' : 'translateY(-100%)'} translate(${noteOffset.x}px, ${noteOffset.y}px)`),
+          top: isNoteOpen ? '50%' : (isAnchored ? 'auto' : position.y)
         }}
         onMouseDown={(e) => e.stopPropagation()}
       >
@@ -1328,7 +1329,10 @@ const FloatingMenu = ({
               )}
             </div>
 
-            <div className={cn("flex items-center gap-1 border-r border-white/5 pr-2 mr-1", isMoveMode && "pointer-events-none opacity-50")}>
+            <div 
+              className={cn("flex items-center gap-1 border-r border-white/5 pr-2 mr-1", isMoveMode && "pointer-events-none opacity-50")}
+              onDoubleClick={(e) => e.stopPropagation()}
+            >
               <button 
                 onClick={() => {
                   const newSize = Math.max(1, (fontSize || 12) - 1);
@@ -1662,48 +1666,67 @@ const FloatingMenu = ({
             </div>
 
             <div className={cn("flex items-center gap-0.5 pr-1 border-r border-white/5 mr-1 relative", isMoveMode && "pointer-events-none opacity-50")}>
-              {showLinkInput ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button 
+                    onMouseDown={(e) => {
+                       e.preventDefault(); // Prevents selection loss
+                       if (showLinkInput) {
+                         setShowLinkInput(false);
+                       } else {
+                         handleLinkButtonClick();
+                       }
+                    }}
+                    className={cn(
+                      "p-2 rounded-lg transition-all",
+                      showLinkInput ? "bg-primary/20 text-primary" : "hover:bg-white/5 text-white/40 hover:text-white"
+                    )}
+                  >
+                    <LinkIcon size={16} />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent className="bg-black text-[9px] font-black uppercase">Enlace</TooltipContent>
+              </Tooltip>
+
+              {showLinkInput && (
                 <div 
                   className={cn(
-                    "absolute flex items-center gap-1 bg-[#1a1a1a] border border-white/10 rounded-xl px-2 py-1 shadow-2xl z-[70] animate-in fade-in zoom-in-95",
-                    isAnchored || isTopHeavy ? "top-full mt-2 -left-12" : "bottom-full mb-2 -left-12"
+                    "absolute flex flex-col gap-2 bg-[#1a1a1a]/95 backdrop-blur-2xl border border-primary/20 rounded-2xl p-3 shadow-[0_20px_50px_-10px_rgba(0,0,0,0.8)] z-[70] animate-in fade-in zoom-in-95",
+                    isAnchored || isTopHeavy ? "top-full mt-3 left-1/2 -translate-x-1/2" : "bottom-full mb-3 left-1/2 -translate-x-1/2"
                   )}
                   onMouseDown={(e) => e.stopPropagation()}
                 >
-                  <input 
-                    type="text" 
-                    value={linkUrl} 
-                    onChange={(e) => setLinkUrl(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        applyLink();
-                      }
-                      if (e.key === 'Escape') setShowLinkInput(false);
-                    }}
-                    placeholder="Escribe o pega la URL..."
-                    className="bg-transparent border-none outline-none text-[10px] font-bold text-white/80 w-48 px-2 h-8"
-                    autoFocus
-                  />
-                  <button onClick={applyLink} className="p-1.5 hover:bg-green-500/20 text-green-500 rounded-lg transition-colors">
-                    <Check size={12} />
-                  </button>
-                  <button onClick={() => { setShowLinkInput(false); setLinkUrl(''); }} className="p-1.5 hover:bg-red-500/20 text-red-500 rounded-lg transition-colors">
-                    <X size={12} />
-                  </button>
+                  <div className="flex items-center gap-1.5 bg-black/40 border border-white/5 rounded-xl px-2 py-1.5 w-64 focus-within:border-primary/50 focus-within:bg-black/60 transition-all">
+                    <LinkIcon size={12} className="text-white/30 ml-1" />
+                    <input 
+                      type="text" 
+                      value={linkUrl} 
+                      onChange={(e) => setLinkUrl(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          applyLink();
+                          setShowLinkInput(false);
+                        }
+                        if (e.key === 'Escape') setShowLinkInput(false);
+                      }}
+                      placeholder="Pega tu enlace aquí..."
+                      className="bg-transparent border-none outline-none text-[11px] font-medium text-white/90 placeholder:text-white/20 w-full h-7"
+                      autoFocus
+                    />
+                  </div>
+                  <div className="flex justify-between items-center px-1">
+                    <span className="text-[9px] font-black uppercase tracking-widest text-white/30 italic">Presiona Enter para aplicar</span>
+                    <div className="flex gap-1">
+                      <button onClick={() => { setShowLinkInput(false); setLinkUrl(''); }} className="px-3 py-1.5 hover:bg-white/5 text-white/50 hover:text-white rounded-lg transition-colors text-[10px] font-bold uppercase tracking-wider">
+                        Cancelar
+                      </button>
+                      <button onClick={() => { applyLink(); setShowLinkInput(false); }} className="px-3 py-1.5 bg-primary/10 hover:bg-primary/30 text-primary rounded-lg transition-colors text-[10px] font-black uppercase tracking-wider">
+                        Insertar
+                      </button>
+                    </div>
+                  </div>
                 </div>
-              ) : (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button 
-                      onClick={handleLinkButtonClick}
-                      className="p-2 rounded-lg hover:bg-white/5 text-white/40 hover:text-white transition-all"
-                    >
-                      <LinkIcon size={16} />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent className="bg-black text-[9px] font-black uppercase">Enlace</TooltipContent>
-                </Tooltip>
               )}
             </div>
 
