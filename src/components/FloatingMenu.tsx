@@ -17,14 +17,71 @@ import {
   Columns2,
   Anchor,
   Bell,
-  Highlighter
+  Highlighter,
+  Sigma,
+  CornerDownLeft
 } from 'lucide-react';
+
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+
+const mathCategories = [
+  {
+    title: "ESTRUCTURAS",
+    items: [
+      { label: "Fracción", tex: "\\frac{a}{b}" },
+      { label: "Potencia", tex: "x^{n}" },
+      { label: "Subíndice", tex: "x_{n}" },
+      { label: "Raíz", tex: "\\sqrt{x}" },
+    ]
+  },
+  {
+    title: "OPERADORES",
+    items: [
+      { label: "Límite", tex: "\\lim_{x \\to \\infty}" },
+      { label: "Suma", tex: "\\sum_{i=0}^{n}" },
+      { label: "Integral", tex: "\\int_{a}^{b} f(x)dx" },
+      { label: "Matriz", tex: "\\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix}" }
+    ]
+  },
+  {
+    title: "SÍMBOLOS",
+    items: [
+      { label: "π", tex: "\\pi" },
+      { label: "∞", tex: "\\infty" },
+      { label: "±", tex: "\\pm" },
+      { label: "→", tex: "\\rightarrow" },
+      { label: "≈", tex: "\\approx" },
+      { label: "≠", tex: "\\neq" },
+      { label: "≤", tex: "\\leq" },
+      { label: "≥", tex: "\\geq" },
+    ]
+  }
+];
+
+const KatexSpan = ({ tex }: { tex: string }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (containerRef.current && (window as any).katex) {
+      try {
+        const cleanTex = tex.trim() === "" ? "\\text{Esperando entrada...}" : tex;
+        (window as any).katex.render(cleanTex, containerRef.current, {
+          throwOnError: false,
+          displayMode: true
+        });
+      } catch (err) {
+        console.error(err);
+      }
+    }
+  }, [tex]);
+
+  return <div ref={containerRef} className="text-3xl text-primary drop-shadow-[0_0_15px_rgba(168,85,247,0.3)] min-h-[80px] flex items-center justify-center transition-all duration-300" />;
+};
 import {
   AlertDialog,
   AlertDialogAction,
@@ -49,6 +106,9 @@ interface FloatingMenuProps {
   activeStyles: any;
   isAnchored?: boolean;
   onToggleAnchor?: () => void;
+  isShortcutMenuOnly?: boolean;
+  pendingMathEdit?: string | null;
+  onInsertMathComplete?: (newNode: HTMLElement | null) => void;
 }
 
 const DEFAULT_COLORS = [
@@ -100,7 +160,10 @@ const FloatingMenu = ({
   setActiveBlock,
   activeStyles,
   isAnchored, 
-  onToggleAnchor 
+  onToggleAnchor,
+  isShortcutMenuOnly = false,
+  pendingMathEdit,
+  onInsertMathComplete,
 }: FloatingMenuProps) => {
   const { toast } = useToast();
   const [showBlockSelector, setShowBlockSelector] = useState(false);
@@ -118,6 +181,43 @@ const FloatingMenu = ({
   const [alignmentShortcuts, setAlignmentShortcuts] = useState<Record<string, string>>({});
   const [recordingShortcutFor, setRecordingShortcutFor] = useState<string | null>(null);
   const [recordingAlignmentFor, setRecordingAlignmentFor] = useState<string | null>(null);
+
+  const [isMathModalOpen, setIsMathModalOpen] = useState(false);
+  const [mathInput, setMathInput] = useState("");
+  const [isKatexLoaded, setIsKatexLoaded] = useState(false);
+  const [savedRange, setSavedRange] = useState<Range | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && !(window as any).katex) {
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = 'https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css';
+      document.head.appendChild(link);
+
+      const script = document.createElement('script');
+      script.src = 'https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js';
+      script.async = true;
+      script.onload = () => setIsKatexLoaded(true);
+      document.head.appendChild(script);
+    } else if (typeof window !== 'undefined' && (window as any).katex) {
+      setIsKatexLoaded(true);
+    }
+  }, []);
+
+  // Auto-open math modal when parent requests editing an existing equation
+  useEffect(() => {
+    if (pendingMathEdit !== null && pendingMathEdit !== undefined) {
+      setMathInput(pendingMathEdit);
+      setIsMathModalOpen(true);
+      setShowBlockSelector(false);
+      setShowFontSelector(false);
+      setShowFontSizeSelector(false);
+      setShowColorSelector(false);
+      setShowAlignmentSelector(false);
+      setShowColumnSelector(false);
+      setShowLinkInput(false);
+    }
+  }, [pendingMathEdit]);
 
   useEffect(() => {
     try {
@@ -265,7 +365,6 @@ const FloatingMenu = ({
   const [noteText, setNoteText] = useState('');
   const [selectedReference, setSelectedReference] = useState('');
   const [fontSize, setFontSize] = useState(12); 
-  const [savedRange, setSavedRange] = useState<Range | null>(null);
   
   const [isMoveMode, setIsMoveMode] = useState(false);
   const [noteOffset, setNoteOffset] = useState(() => {
@@ -338,7 +437,6 @@ const FloatingMenu = ({
   }, [lastUsedColor]);
 
   const [colorToDelete, setColorToDelete] = useState<string | null>(null);
-  const [highlightColorToDelete, setHighlightColorToDelete] = useState<string | null>(null);
   const highlightInputRef = useRef<HTMLInputElement>(null);
   
   const noteEditorRef = useRef<HTMLDivElement>(null);
@@ -346,12 +444,15 @@ const FloatingMenu = ({
   const activeHighlightRef = useRef<HTMLElement | null>(null);
   const prevMoveModeRef = useRef(false);
   const menuRef = useRef<HTMLDivElement>(null);
-  const clickOutsideRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (isAnchored) return;
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+      
+      const target = event.target as Node;
+      if (document.getElementById('math-modal-container')?.contains(target)) return;
+      
+      if (menuRef.current && !menuRef.current.contains(target)) {
         onClose();
         setIsNoteOpen(false);
       }
@@ -387,8 +488,6 @@ const FloatingMenu = ({
           if (rect.top < headerSafeZone) dy = headerSafeZone - rect.top;
           else if (rect.bottom > window.innerHeight - horizontalPadding) dy = (window.innerHeight - horizontalPadding) - rect.bottom;
         } else if (rect.top < headerSafeZone) {
-          // If we're not in a note but hitting the top, the transform flipping below 
-          // (dynamic translateY) will handle most cases, but we can add minor dy correction here if needed
           dy = headerSafeZone - rect.top;
         }
 
@@ -621,7 +720,6 @@ const FloatingMenu = ({
       setReminderSavedRange(sel.getRangeAt(0).cloneRange());
     }
     setShowRememberMe(true);
-    // setIsMoveMode(false); // User doesn't want move mode for reminders
     setShowHighlightSelector(false);
   };
 
@@ -674,6 +772,91 @@ const FloatingMenu = ({
     setReminderSourceText('');
     setReminderSavedRange(null);
   };
+
+  const handleInsertMath = () => {
+    if (mathInput.trim() === "") {
+      setIsMathModalOpen(false);
+      return;
+    }
+    
+    try {
+      const mathHtml = (window as any).katex.renderToString(mathInput, { 
+        displayMode: true, 
+        throwOnError: false 
+      });
+
+      // Build math node (same structure always)
+      const mathNode = document.createElement('span');
+      mathNode.className = 'luvia-math';
+      mathNode.contentEditable = 'false';
+      mathNode.setAttribute('data-latex', mathInput);
+      mathNode.innerHTML = `
+        <span class="math-render">${mathHtml}</span>
+        <span class="math-controls">
+          <button class="math-edit-btn" title="Editar ecuaci\u00f3n" style="background:none;border:none;cursor:pointer;padding:3px 5px;color:rgba(168,85,247,0.7);border-radius:4px;line-height:1;">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+          </button>
+          <button class="math-delete-btn" title="Eliminar ecuaci\u00f3n" style="background:none;border:none;cursor:pointer;padding:3px 5px;color:rgba(239,68,68,0.7);border-radius:4px;line-height:1;">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+          </button>
+        </span>
+      `;
+
+      // EDIT MODE: replace the old block and notify parent
+      if (onInsertMathComplete) {
+        onInsertMathComplete(mathNode);
+        setMathInput("");
+        setIsMathModalOpen(false);
+        setSavedRange(null);
+        return;
+      }
+
+      // INSERT MODE: insert at cursor
+      const selection = window.getSelection();
+      let range: Range | null = null;
+      
+      if (savedRange) {
+        range = savedRange;
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+      } else if (selection && selection.rangeCount > 0) {
+        range = selection.getRangeAt(0);
+      }
+
+      if (range) {
+        range.deleteContents();
+        range.insertNode(mathNode);
+        
+        const newRange = document.createRange();
+        newRange.setStartAfter(mathNode);
+        newRange.collapse(true);
+        selection?.removeAllRanges();
+        selection?.addRange(newRange);
+      }
+      
+      if (editorRef.current) {
+        setContent(editorRef.current.innerHTML);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+    
+    setMathInput("");
+    setIsMathModalOpen(false);
+    setSavedRange(null);
+  };
+
+  const handleMathKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleInsertMath();
+    }
+  };
+
+  const insertMathSymbol = (symbol: string) => {
+    setMathInput(prev => prev + symbol);
+  };
+
   const execCommand = (command: string, value: string = '') => {
     if (editorRef.current) {
       if (document.activeElement !== editorRef.current) {
@@ -844,7 +1027,8 @@ const FloatingMenu = ({
   };
 
   const toggleMoveModeViaDoubleClick = () => {
-    if (isAnchored || showRememberMe) return;
+    if (showRememberMe) return; // Only block for reminder modal; shortcut-only mode shouldn't block this
+    if (isAnchored) return;
     setIsMoveMode((prev: boolean) => !prev);
   };
 
@@ -870,7 +1054,7 @@ const FloatingMenu = ({
         }}
         onMouseDown={(e) => e.stopPropagation()}
       >
-        {!isNoteOpen && (
+        {!isNoteOpen && !isShortcutMenuOnly && (
           <Tooltip>
             <TooltipTrigger asChild>
               <button 
@@ -891,7 +1075,6 @@ const FloatingMenu = ({
 
         {isNoteOpen ? (
           <div className="relative group/note-wrapper">
-            {/* TOP drag handle */}
             <div
               className="absolute -top-5 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-0.5 cursor-grab active:cursor-grabbing group/handle select-none"
               onMouseDown={startHandleDrag}
@@ -903,7 +1086,6 @@ const FloatingMenu = ({
                 <span className="text-[8px] font-black uppercase tracking-[0.15em] text-red-400/70 group-hover/handle:text-red-400 ml-1.5 transition-colors">MOVER</span>
               </div>
             </div>
-            {/* BOTTOM drag handle */}
             <div
               className="absolute -bottom-5 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-0.5 cursor-grab active:cursor-grabbing group/handle select-none"
               onMouseDown={startHandleDrag}
@@ -915,7 +1097,6 @@ const FloatingMenu = ({
                 <span className="text-[8px] font-black uppercase tracking-[0.15em] text-red-400/70 group-hover/handle:text-red-400 ml-1.5 transition-colors">MOVER</span>
               </div>
             </div>
-            {/* LEFT drag handle */}
             <div
               className="absolute -left-5 top-1/2 -translate-y-1/2 z-50 flex flex-row items-center gap-0.5 cursor-grab active:cursor-grabbing group/handle select-none"
               onMouseDown={startHandleDrag}
@@ -926,7 +1107,6 @@ const FloatingMenu = ({
                 </div>
               </div>
             </div>
-            {/* RIGHT drag handle */}
             <div
               className="absolute -right-5 top-1/2 -translate-y-1/2 z-50 flex flex-row items-center gap-0.5 cursor-grab active:cursor-grabbing group/handle select-none"
               onMouseDown={startHandleDrag}
@@ -1020,7 +1200,7 @@ const FloatingMenu = ({
           <div 
             onMouseDown={handleNoteMouseDown}
             onDoubleClick={() => {
-              if (isAnchored) return; // Disable move mode on double click if anchored
+              if (isAnchored) return;
               toggleMoveModeViaDoubleClick();
             }}
             className={cn(
@@ -1137,13 +1317,11 @@ const FloatingMenu = ({
                                   `;
                                   execCommand('insertHTML', toggleHtml);
                                 } else if (item.label === 'Texto') {
-                                  // Mejorar la conversión de lista a texto
                                   const selection = window.getSelection();
                                   if (selection && selection.rangeCount > 0) {
                                     const anchor = selection.anchorNode;
                                     const li = anchor?.nodeType === 3 ? anchor.parentElement?.closest('li') : (anchor as HTMLElement)?.closest('li');
                                     if (li) {
-                                      // Si estamos en una lista, toggler la lista para quitarla
                                       const listTag = li.parentElement?.tagName.toLowerCase();
                                       if (listTag === 'ul') document.execCommand('insertUnorderedList');
                                       else if (listTag === 'ol') document.execCommand('insertOrderedList');
@@ -1606,8 +1784,6 @@ const FloatingMenu = ({
                 )}
               </div>
 
-
-
               <div className="relative">
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -1669,8 +1845,41 @@ const FloatingMenu = ({
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button 
+                    data-action="insert-math"
                     onMouseDown={(e) => {
-                       e.preventDefault(); // Prevents selection loss
+                       e.preventDefault();
+                       e.stopPropagation();
+                       
+                       const selection = window.getSelection();
+                       if (selection && selection.rangeCount > 0) {
+                         setSavedRange(selection.getRangeAt(0));
+                       }
+
+                       setIsMathModalOpen(true);
+                       setShowBlockSelector(false);
+                       setShowFontSelector(false);
+                       setShowFontSizeSelector(false);
+                       setShowColorSelector(false);
+                       setShowAlignmentSelector(false);
+                       setShowColumnSelector(false);
+                       setShowLinkInput(false);
+                    }}
+                    className={cn(
+                      "p-2 rounded-lg transition-all",
+                      isMathModalOpen ? "bg-primary/20 text-primary shadow-[0_0_10px_rgba(168,85,247,0.2)]" : "hover:bg-white/5 text-white/40 hover:text-white"
+                    )}
+                  >
+                    <Sigma size={16} />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent className="bg-black text-[9px] font-black uppercase">Insertar Ecuación</TooltipContent>
+              </Tooltip>
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button 
+                    onMouseDown={(e) => {
+                       e.preventDefault();
                        if (showLinkInput) {
                          setShowLinkInput(false);
                        } else {
@@ -1969,7 +2178,6 @@ const FloatingMenu = ({
                         execCommand('foreColor', newColor);
                         setLastUsedColor(newColor);
                         
-                        // Añadir a favoritos si no existe
                         setPaletteColors((prev: any[]) => {
                           if (prev.find((c: any) => c.value.toLowerCase() === newColor.toLowerCase())) return prev;
                           return [...prev, { name: 'Personalizado', value: newColor }];
@@ -2005,6 +2213,127 @@ const FloatingMenu = ({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* MODAL MATEMÁTICO - Movido fuera del contenedor principal para evitar recortes */}
+      {isMathModalOpen && (
+        <div id="math-modal-container" className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-300">
+          <div className="bg-[#0d0d0f]/90 backdrop-blur-2xl border border-white/10 w-full max-w-3xl max-h-[90vh] rounded-[2rem] shadow-[0_50px_100px_-20px_rgba(0,0,0,0.7)] flex flex-col overflow-hidden animate-in zoom-in-95 duration-300">
+            
+            {/* Header Modal */}
+            <div className="flex items-center justify-between px-8 py-5 border-b border-white/5 bg-white/[0.02]">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-primary/20 rounded-xl shadow-[0_0_20px_rgba(168,85,247,0.25)]">
+                  <Sigma size={20} className="text-primary" />
+                </div>
+                <div>
+                  <h3 className="text-white font-black text-sm uppercase tracking-[0.2em] italic">Editor Científico</h3>
+                  <p className="text-[10px] text-white/30 font-bold uppercase tracking-widest italic mt-0.5">Soporte LaTeX Avanzado</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => {
+                  setIsMathModalOpen(false);
+                  if (pendingMathEdit) onInsertMathComplete?.(null);
+                }}
+                className="text-white/20 hover:text-white transition-all p-2 hover:bg-white/5 rounded-full"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto custom-scrollbar">
+              <div className="flex flex-col">
+                {/* PREVISUALIZACIÓN REAL */}
+                <div className="p-8 pt-6">
+                  <div className="relative group/preview">
+                    <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-transparent to-transparent opacity-50 rounded-3xl" />
+                    <div className="relative min-h-[140px] flex items-center justify-center bg-black/40 rounded-3xl border border-white/5 p-8 shadow-inner overflow-hidden">
+                      <div className="absolute top-3 left-4 text-[9px] font-black uppercase tracking-[0.3em] text-white/10 italic">Preview Mode</div>
+                      {isKatexLoaded ? (
+                        <KatexSpan tex={mathInput} />
+                      ) : (
+                        <div className="flex items-center gap-3">
+                          <div className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+                          <span className="text-[10px] font-black uppercase tracking-widest text-white/20 italic">Cargando motor...</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Entrada de Código */}
+                <div className="px-8 pb-8 flex gap-3">
+                  <div className="flex-1 group/input-wrapper relative">
+                    <div className="absolute -inset-0.5 bg-gradient-to-r from-primary/20 to-transparent rounded-2xl opacity-0 group-focus-within/input-wrapper:opacity-100 transition-opacity blur-sm" />
+                    <input
+                      autoFocus
+                      type="text"
+                      value={mathInput}
+                      onChange={(e) => setMathInput(e.target.value)}
+                      onKeyDown={handleMathKeyDown}
+                      placeholder="Escribe código LaTeX (ej: \\frac{a}{b})"
+                      className="relative w-full bg-black/60 border border-white/10 rounded-2xl px-6 py-4 text-lg font-mono text-white placeholder:text-white/10 outline-none focus:border-primary/50 transition-all shadow-2xl"
+                    />
+                  </div>
+                  <button 
+                    onClick={handleInsertMath}
+                    className="bg-primary hover:bg-primary/90 text-white px-6 py-4 rounded-2xl flex items-center justify-center transition-all shadow-[0_10px_30px_-5px_rgba(168,85,247,0.4)] active:scale-95 group"
+                  >
+                    <CornerDownLeft size={24} className="group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+                  </button>
+                </div>
+
+                {/* Teclado de Símbolos */}
+                <div className="px-8 pb-8 space-y-8">
+                  {mathCategories.map((cat, idx) => (
+                    <div key={idx}>
+                      <div className="flex items-center gap-3 mb-4">
+                        <span className="text-[10px] font-black text-primary/50 uppercase tracking-[0.2em] italic">{cat.title}</span>
+                        <div className="h-px flex-1 bg-white/[0.03]" />
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        {cat.items.map((btn, bIdx) => (
+                          <button
+                            key={bIdx}
+                            onClick={() => insertMathSymbol(btn.tex)}
+                            className="relative flex flex-col items-center justify-center p-4 bg-white/[0.02] border border-white/5 hover:border-primary/50 hover:bg-primary/5 rounded-2xl transition-all group overflow-hidden"
+                          >
+                            <div className="absolute top-0 right-0 p-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <Plus size={10} className="text-primary" />
+                            </div>
+                            <span className="text-xs font-bold text-white/60 group-hover:text-white transition-colors">{btn.label}</span>
+                            <code className="text-[9px] text-white/10 mt-1.5 font-mono group-hover:text-primary/40 transition-colors uppercase tracking-widest">{btn.tex}</code>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Botones de Acción */}
+            <div className="px-8 py-6 bg-white/[0.02] border-t border-white/5 flex justify-between items-center">
+              <div className="flex items-center gap-2">
+                <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                <p className="text-[10px] font-bold text-white/20 uppercase tracking-widest italic">
+                  Presiona <span className="text-primary/60 font-black">Enter</span> para aplicar
+                </p>
+              </div>
+              <div className="flex gap-4">
+                <button 
+                  onClick={handleInsertMath}
+                  className="flex items-center gap-3 bg-primary text-white px-8 py-3.5 rounded-2xl text-[11px] font-black uppercase tracking-widest italic shadow-[0_20px_40px_-10px_rgba(168,85,247,0.4)] hover:bg-primary/90 transition-all active:scale-95 group"
+                >
+                  <Check size={16} strokeWidth={3} />
+                  Insertar Ecuación
+                </button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      )}
     </TooltipProvider>
   );
 };

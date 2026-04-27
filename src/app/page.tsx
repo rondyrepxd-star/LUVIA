@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { get, set } from 'idb-keyval';
 import Sidebar from '@/components/Sidebar';
 import Notebook from '@/components/Notebook';
 import ChatView from '@/components/ChatView';
@@ -127,6 +128,9 @@ export default function LuviaApp() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isFocusMode, setIsFocusMode] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isSpellcheckEnabled, setIsSpellcheckEnabled] = useState(true);
+  const [isShortcutMenuOnly, setIsShortcutMenuOnly] = useState(false);
+  const [appTheme, setAppTheme] = useState('dark');
   const [sidebarWidth, setSidebarWidth] = useState(260);
   const [isResizing, setIsResizing] = useState(false);
 
@@ -161,11 +165,9 @@ export default function LuviaApp() {
       window.removeEventListener('mouseup', handleMouseUp);
     };
   }, [isResizing]);
-  const [appTheme, setAppTheme] = useState('default');
   const [notebookFont, setNotebookFont] = useState<'sans' | 'serif' | 'mono'>('sans');
   const [notebookFontSize, setNotebookFontSize] = useState(18);
   const [notebookWidth, setNotebookWidth] = useState<NotebookWidth>('wide');
-  const [isSpellcheckEnabled, setIsSpellcheckEnabled] = useState(true);
   const [masterQuizData, setMasterQuizData] = useState<GenerateQuizOutput | null>(null);
   
   const [activeTabIndex, setActiveTabIndex] = useState<number | null>(null);
@@ -313,25 +315,47 @@ export default function LuviaApp() {
   }, [flashcards, activeFlashcard, isEditingNotification]);
 
   useEffect(() => {
-    const savedNotes = localStorage.getItem('luvia_notes');
-    const savedFolders = localStorage.getItem('luvia_folders');
-    const lastActiveId = localStorage.getItem('luvia_active_id');
-    const savedFont = localStorage.getItem('luvia_font');
-    const savedFontSize = localStorage.getItem('luvia_font_size');
-    const savedWidth = localStorage.getItem('luvia_width');
-    const savedSidebar = localStorage.getItem('luvia_sidebar_collapsed');
-    const savedSpellcheck = localStorage.getItem('luvia_spellcheck');
-    const savedTheme = localStorage.getItem('luvia_theme');
+    const init = async () => {
+      try {
+        const idbNotes = await get('luvia_notes');
+        if (idbNotes) {
+          setNotes(idbNotes);
+        } else {
+          const savedNotes = localStorage.getItem('luvia_notes');
+          if (savedNotes) setNotes(JSON.parse(savedNotes));
+        }
+      } catch (e) {
+        console.error("IDB load failed", e);
+        const savedNotes = localStorage.getItem('luvia_notes');
+        if (savedNotes) {
+          try { setNotes(JSON.parse(savedNotes)); } catch(e){}
+        }
+      }
 
-    if (savedNotes) setNotes(JSON.parse(savedNotes));
-    if (savedFolders) setFolders(JSON.parse(savedFolders));
-    if (lastActiveId) setActiveNoteId(lastActiveId);
-    if (savedFont) setNotebookFont(savedFont as any);
-    if (savedFontSize) setNotebookFontSize(parseInt(savedFontSize, 10));
-    if (savedWidth) setNotebookWidth(savedWidth as NotebookWidth);
-    if (savedSidebar) setIsSidebarCollapsed(savedSidebar === 'true');
-    if (savedSpellcheck) setIsSpellcheckEnabled(savedSpellcheck === 'true');
-    if (savedTheme) setAppTheme(savedTheme);
+      const savedFolders = localStorage.getItem('luvia_folders');
+      const lastActiveId = localStorage.getItem('luvia_active_id');
+      const savedFont = localStorage.getItem('luvia_font');
+      const savedFontSize = localStorage.getItem('luvia_font_size');
+      const savedWidth = localStorage.getItem('luvia_width');
+      const savedSidebar = localStorage.getItem('luvia_sidebar_collapsed');
+      const savedSpellcheck = localStorage.getItem('luvia_spellcheck');
+      const savedShortcutMenu = localStorage.getItem('luvia_shortcut_menu');
+      const savedTheme = localStorage.getItem('luvia_theme');
+
+      if (savedFolders) setFolders(JSON.parse(savedFolders));
+      if (lastActiveId) setActiveNoteId(lastActiveId);
+      if (savedFont) setNotebookFont(savedFont as any);
+      if (savedFontSize) setNotebookFontSize(parseInt(savedFontSize, 10));
+      if (savedWidth) setNotebookWidth(savedWidth as NotebookWidth);
+      if (savedSidebar) setIsSidebarCollapsed(savedSidebar === 'true');
+      if (savedSpellcheck) setIsSpellcheckEnabled(savedSpellcheck === 'true');
+      if (savedShortcutMenu) setIsShortcutMenuOnly(savedShortcutMenu === 'true');
+      if (savedTheme) setAppTheme(savedTheme);
+
+      setIsInitialLoadDone(true);
+    };
+
+    init();
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
@@ -340,27 +364,28 @@ export default function LuviaApp() {
       }
     };
     window.addEventListener('keydown', handleKeyDown);
-    setIsInitialLoadDone(true);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
   useEffect(() => {
     if (!isInitialLoadDone) return;
     
+    set('luvia_notes', notes).catch(e => console.error("IDB save failed", e));
+    
     try {
-      localStorage.setItem('luvia_notes', JSON.stringify(notes));
       localStorage.setItem('luvia_folders', JSON.stringify(folders));
       localStorage.setItem('luvia_font', notebookFont);
       localStorage.setItem('luvia_font_size', notebookFontSize.toString());
       localStorage.setItem('luvia_width', notebookWidth);
       localStorage.setItem('luvia_sidebar_collapsed', String(isSidebarCollapsed));
       localStorage.setItem('luvia_spellcheck', String(isSpellcheckEnabled));
+      localStorage.setItem('luvia_shortcut_menu', String(isShortcutMenuOnly));
       localStorage.setItem('luvia_theme', appTheme);
       if (activeNoteId) localStorage.setItem('luvia_active_id', activeNoteId);
     } catch (e) {
-      console.warn("localStorage quota exceeded. Consider exporting your data and deleting older notes.", e);
+      console.warn("localStorage quota exceeded.", e);
     }
-  }, [notes, folders, activeNoteId, notebookFont, notebookFontSize, notebookWidth, isSidebarCollapsed, isSpellcheckEnabled, appTheme, isInitialLoadDone]);
+  }, [notes, folders, activeNoteId, notebookFont, notebookFontSize, notebookWidth, isSidebarCollapsed, isSpellcheckEnabled, isShortcutMenuOnly, appTheme, isInitialLoadDone]);
 
   const activeNote = useMemo(() => 
     notes.find(n => n.id === activeNoteId) || null
@@ -686,7 +711,9 @@ export default function LuviaApp() {
                 fontFamily={notebookFont}
                 fontSize={notebookFontSize}
                 width={notebookWidth}
-                spellcheckEnabled={isSpellcheckEnabled}
+                activeNote={activeNote}
+                isSpellcheckEnabled={isSpellcheckEnabled}
+                isShortcutMenuOnly={isShortcutMenuOnly}
               />
             </div>
             <div className={cn("h-full w-full", activeTab !== 'Chat' && "hidden")}>
@@ -749,17 +776,6 @@ export default function LuviaApp() {
 
   const tabs: AppTab[] = ['Notebook', 'Chat', 'Quiz'];
 
-  const handleTabScroll = (index: number) => {
-    const editor = document.querySelector('.editor-content');
-    if (editor) {
-      const headings = Array.from(editor.querySelectorAll('h1, h2'));
-      const target = headings[index] as HTMLElement;
-      if (target) {
-        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
-    }
-  };
-
   return (
     <TooltipProvider>
       <div className={cn(
@@ -821,6 +837,8 @@ export default function LuviaApp() {
             onOpenSettings={() => setIsSettingsOpen(true)}
             activeTab={activeTab}
             onTabChange={handleTabChange}
+            onExportLuvia={handleExportLuvia}
+            onImportLuvia={() => fileInputRef.current?.click()}
           />
           
           {/* Resize handle */}
@@ -929,6 +947,10 @@ export default function LuviaApp() {
                           <span className="text-[11px] font-bold uppercase tracking-tight text-white/60 italic">Corrección</span>
                           <Switch checked={isSpellcheckEnabled} onCheckedChange={setIsSpellcheckEnabled} />
                         </div>
+                        <div className="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-white/5 transition-all">
+                          <span className="text-[11px] font-bold uppercase tracking-tight text-white/60 italic">Atajo Menu (C+A+F)</span>
+                          <Switch checked={isShortcutMenuOnly} onCheckedChange={setIsShortcutMenuOnly} />
+                        </div>
                       </div>
                     </PopoverContent>
                   </Popover>
@@ -1000,6 +1022,10 @@ export default function LuviaApp() {
           setFontFamily={setNotebookFont}
           theme={appTheme}
           setTheme={setAppTheme}
+          isSpellcheckEnabled={isSpellcheckEnabled}
+          setIsSpellcheckEnabled={setIsSpellcheckEnabled}
+          isShortcutMenuOnly={isShortcutMenuOnly}
+          setIsShortcutMenuOnly={setIsShortcutMenuOnly}
         />
         
         {/* Flashcard Notification Overlay - bigger card with actions */}

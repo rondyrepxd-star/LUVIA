@@ -11,9 +11,26 @@ interface SettingsModalProps {
   setFontFamily: (font: 'sans' | 'serif' | 'mono') => void;
   theme: string;
   setTheme: (theme: string) => void;
+  isSpellcheckEnabled: boolean;
+  setIsSpellcheckEnabled: (val: boolean) => void;
+  isShortcutMenuOnly: boolean;
+  setIsShortcutMenuOnly: (val: boolean) => void;
 }
 
-const SettingsModal = ({ isOpen, onClose, fontSize, setFontSize, fontFamily, setFontFamily, theme, setTheme }: SettingsModalProps) => {
+const SettingsModal = ({ 
+  isOpen, 
+  onClose, 
+  fontSize, 
+  setFontSize, 
+  fontFamily, 
+  setFontFamily, 
+  theme, 
+  setTheme,
+  isSpellcheckEnabled,
+  setIsSpellcheckEnabled,
+  isShortcutMenuOnly,
+  setIsShortcutMenuOnly
+}: SettingsModalProps) => {
   const [activeTab, setActiveTab] = useState<'appearance'>('appearance');
 
   if (!isOpen) return null;
@@ -54,7 +71,6 @@ const SettingsModal = ({ isOpen, onClose, fontSize, setFontSize, fontFamily, set
             >
               <Palette size={16} /> Appearance
             </button>
-            {/* Additional mock tabs could go here */}
           </div>
           
           <div className="p-4 border-t border-white/5 mt-auto">
@@ -220,68 +236,47 @@ const SettingsModal = ({ isOpen, onClose, fontSize, setFontSize, fontFamily, set
                       </span>
                       <span className="text-[10px] text-white/40 leading-tight">Bosque nocturno digital, calma total.</span>
                     </button>
-
-                    {/* Polar Light */}
-                    <button 
-                      onClick={() => setTheme('light')}
-                      className={cn(
-                        "flex flex-col items-start p-4 rounded-xl border text-left transition-all",
-                        theme === 'light' 
-                          ? "bg-white/10 border-primary shadow-[0_0_20px_rgba(var(--primary),0.1)] ring-1 ring-primary" 
-                          : "bg-[#111] border-white/5 hover:border-white/20 hover:bg-white/5"
-                      )}
-                    >
-                      <div className="w-full h-20 bg-white rounded-lg border border-black/10 mb-3 flex overflow-hidden">
-                        <div className="w-[30%] bg-[#f5f5f7] h-full border-r border-black/5"></div>
-                        <div className="flex-1 bg-white h-full p-3 flex flex-col gap-2">
-                          <div className="w-1/2 h-1.5 bg-black/10 rounded-full"></div>
-                          <div className="w-3/4 h-1.5 bg-black/5 rounded-full"></div>
-                        </div>
-                      </div>
-                      <span className="text-[11px] font-black uppercase tracking-widest text-white mb-1 flex items-center gap-2">
-                        Polar Light <Sun size={10} className="text-amber-500" />
-                      </span>
-                      <span className="text-[10px] text-white/40 leading-tight">Interfaz clara, suave y minimalista.</span>
-                    </button>
                   </div>
                 </div>
 
                 <div className="w-full h-px bg-white/5" />
 
-                {/* Display Section */}
+                {/* Advanced Section */}
                 <div className="space-y-8">
                   <div>
-                    <span className="text-[9px] font-black uppercase tracking-[0.1em] text-white/30">DISPLAY</span>
+                    <span className="text-[9px] font-black uppercase tracking-[0.1em] text-white/30">ADVANCED / EDITOR</span>
                   </div>
                   
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1 pr-12">
-                      <h3 className="text-[13px] font-bold text-white mb-1">Font size</h3>
-                      <p className="text-xs text-white/50">Adjust text size in Reader, Chat, Quiz and Notebook items.</p>
-                      
-                      {/* Interactive Visualizer */}
-                      <div className="mt-6 p-6 bg-[#111111] border border-white/5 rounded-2xl">
-                        <p style={{ fontSize: `${fontSize}px` }} className="text-white/80 transition-all font-medium leading-relaxed">
-                          La intuición no miente. Cuando la razón vacila, confía en lo que sientes en la superficie del agua. Es el primer destello de supervivencia.
-                        </p>
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between p-4 bg-[#111] border border-white/5 rounded-2xl">
+                      <div>
+                        <h3 className="text-[13px] font-bold text-white mb-0.5">Corrección Ortográfica</h3>
+                        <p className="text-[11px] text-white/40">Activar subrayado rojo para errores de escritura.</p>
                       </div>
-                    </div>
-                    
-                    <div className="flex items-center bg-[#111] border border-white/5 rounded-xl px-1 py-1 shadow-inner h-9 shrink-0">
                       <button 
-                        onClick={handleDecreaseFont}
-                        className="w-8 h-full flex items-center justify-center hover:bg-white/10 rounded-md transition-colors text-white/60 hover:text-white active:scale-95"
+                        onClick={() => setIsSpellcheckEnabled(!isSpellcheckEnabled)}
+                        className={cn(
+                          "w-12 h-6 rounded-full transition-all relative",
+                          isSpellcheckEnabled ? "bg-primary" : "bg-white/10"
+                        )}
                       >
-                        <Minus size={14} strokeWidth={3} />
+                        <div className={cn("absolute top-1 w-4 h-4 rounded-full bg-white transition-all", isSpellcheckEnabled ? "left-7" : "left-1")} />
                       </button>
-                      <div className="text-[11px] font-bold text-white w-14 text-center select-none tracking-wider">
-                        {Math.round((fontSize / 18) * 100)}%
+                    </div>
+
+                    <div className="flex items-center justify-between p-4 bg-[#111] border border-white/5 rounded-2xl">
+                      <div>
+                        <h3 className="text-[13px] font-bold text-white mb-0.5">Atajo de Menú Flotante</h3>
+                        <p className="text-[11px] text-white/40">El menú solo aparecerá con Ctrl + Alt + F.</p>
                       </div>
                       <button 
-                        onClick={handleIncreaseFont}
-                        className="w-8 h-full flex items-center justify-center hover:bg-white/10 rounded-md transition-colors text-white/60 hover:text-white active:scale-95"
+                        onClick={() => setIsShortcutMenuOnly(!isShortcutMenuOnly)}
+                        className={cn(
+                          "w-12 h-6 rounded-full transition-all relative",
+                          isShortcutMenuOnly ? "bg-primary" : "bg-white/10"
+                        )}
                       >
-                        <Plus size={14} strokeWidth={3} />
+                        <div className={cn("absolute top-1 w-4 h-4 rounded-full bg-white transition-all", isShortcutMenuOnly ? "left-7" : "left-1")} />
                       </button>
                     </div>
                   </div>

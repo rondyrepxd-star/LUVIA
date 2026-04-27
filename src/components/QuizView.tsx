@@ -162,6 +162,127 @@ const AnimatedWord = ({ text, effect }: { text: string, effect: RevealEffect }) 
   );
 };
 
+const KatexSpan = ({ tex, displayMode }: { tex: string; displayMode: boolean }) => {
+  const containerRef = useRef<HTMLSpanElement>(null);
+
+  useEffect(() => {
+    if (containerRef.current && (window as any).katex) {
+      try {
+        (window as any).katex.render(tex, containerRef.current, {
+          throwOnError: false,
+          displayMode: displayMode
+        });
+      } catch (err) {
+        console.error(err);
+      }
+    }
+  }, [tex, displayMode]);
+
+  return <span ref={containerRef} className={cn(displayMode ? "block my-4 text-center w-full" : "inline-block mx-1")} />;
+};
+
+const MathRenderer = ({ text, className }: { text: string; className?: string }) => {
+  if (!text) return null;
+  
+  // Intelligent Detection: If text contains LaTeX commands but NO delimiters, treat the whole text as math
+  // This allows users to paste or type "\frac{a}{b}" directly and see it rendered.
+  const latexTriggers = [
+    '\\frac', '\\sqrt', '\\sum', '\\int', '\\pi', '\\infty', 
+    '\\alpha', '\\beta', '\\gamma', '\\Delta', '\\pm', '\\approx', 
+    '\\neq', '\\leq', '\\geq', '\\times', '\\div', '\\cdot',
+    '\\text{', '^{', '_{'
+  ];
+  
+  let processedText = text;
+  const hasLatexBlocks = text.includes('$');
+  const hasLatexTriggers = latexTriggers.some(trigger => text.toLowerCase().includes(trigger.toLowerCase()));
+  
+  if (!hasLatexBlocks && hasLatexTriggers) {
+    // If it's a simple command or a fraction, wrap it.
+    // If it contains newlines, treat as block math
+    if (text.includes('\n') || text.length > 30) {
+      processedText = `$$${text}$$`;
+    } else {
+      processedText = `$${text}$`;
+    }
+  }
+  
+  // Regex to find LaTeX blocks ($...$ and $$...$$)
+  const parts = processedText.split(/(\$\$[\s\S]*?\$\$|\$[^\$\n]+?\$)/g);
+  
+  return (
+    <span className={className} style={{ textTransform: 'none' }}>
+      {parts.map((part, i) => {
+        if (part.startsWith('$$') && part.endsWith('$$')) {
+          const latex = part.slice(2, -2);
+          return <KatexSpan key={i} tex={latex} displayMode={true} />;
+        }
+        if (part.startsWith('$') && part.endsWith('$')) {
+          const latex = part.slice(1, -1);
+          return <KatexSpan key={i} tex={latex} displayMode={false} />;
+        }
+        return <span key={i}>{part}</span>;
+      })}
+    </span>
+  );
+};
+
+const MathToolbar = ({ onInsert }: { onInsert: (tex: string) => void }) => {
+  const symbols = [
+    { label: '√x', tex: '\\sqrt{x}' },
+    { label: 'x²', tex: 'x^{2}' },
+    { label: 'xⁿ', tex: 'x^{n}' },
+    { label: 'a/b', tex: '\\frac{a}{b}' },
+    { label: 'π', tex: '\\pi' },
+    { label: '∞', tex: '\\infty' },
+    { label: 'Σ', tex: '\\sum' },
+    { label: '∫', tex: '\\int' },
+    { label: '±', tex: '\\pm' },
+    { label: '≈', tex: '\\approx' },
+    { label: '≠', tex: '\\neq' },
+    { label: '≤', tex: '\\leq' },
+    { label: '≥', tex: '\\geq' },
+    { label: 'α', tex: '\\alpha' },
+    { label: 'β', tex: '\\beta' },
+    { label: 'Δ', tex: '\\Delta' },
+  ];
+
+  return (
+    <div className="flex flex-wrap gap-1.5 p-2 bg-white/[0.02] border border-white/5 rounded-xl mt-2">
+      <div className="w-full mb-1 flex items-center justify-between px-1">
+        <span className="text-[8px] font-black uppercase tracking-[0.2em] text-white/20 italic">Insertar Ecuación</span>
+        <div className="flex gap-2">
+           <button onClick={() => onInsert('$$ $$')} className="text-[7px] font-black uppercase px-2 py-0.5 rounded bg-primary/20 text-primary hover:bg-primary/30 transition-colors">Bloque $$</button>
+           <button onClick={() => onInsert('$ $')} className="text-[7px] font-black uppercase px-2 py-0.5 rounded bg-accent/20 text-accent hover:bg-accent/30 transition-colors">Línea $</button>
+        </div>
+      </div>
+      {symbols.map((s, idx) => (
+        <button
+          key={idx}
+          onClick={() => onInsert(s.tex)}
+          className="px-2 py-1 bg-white/5 hover:bg-primary/20 hover:text-primary border border-white/5 rounded-lg text-[10px] font-mono transition-all text-white/60"
+          title={s.tex}
+        >
+          {s.label}
+        </button>
+      ))}
+    </div>
+  );
+};
+
+const MathLivePreview = ({ text, label = "Live Preview" }: { text: string; label?: string }) => {
+  if (!text || !text.trim()) return null;
+  return (
+    <div className="mt-3 p-4 bg-white/[0.01] border border-dashed border-white/10 rounded-xl animate-in fade-in duration-300">
+      <div className="flex items-center gap-2 mb-2">
+        <SparklesIcon size={10} className="text-primary/50" />
+        <span className="text-[8px] font-black uppercase tracking-[0.2em] text-white/20 italic">{label}</span>
+      </div>
+      <MathRenderer text={text} className="text-sm text-white/80" />
+    </div>
+  );
+};
+
 const QuizView = ({ 
   currentNoteId,
   noteContent, 
@@ -1264,7 +1385,9 @@ const QuizView = ({
                           <SparklesIcon size={18} className="text-primary shrink-0 mt-0.5" />
                           <div className="text-left">
                             <span className="text-[10px] font-black uppercase text-primary tracking-widest block mb-1">hint:</span>
-                            <p className="text-xs font-medium text-white/70 italic leading-relaxed">{currentQuestion.hint}</p>
+                            <p className="text-xs font-medium text-white/70 italic leading-relaxed">
+                              <MathRenderer text={currentQuestion.hint} />
+                            </p>
                           </div>
                         </div>
                       ) : (
@@ -1285,11 +1408,15 @@ const QuizView = ({
                       <div className={cn("relative w-full h-full transition-transform duration-700 preserve-3d text-center py-16", isFlipped && "rotate-y-180")}>
                         <div className={cn("backface-hidden w-full", isFlipped ? "hidden" : "block")}>
                           <p className="text-[10px] font-black uppercase tracking-[0.4em] text-primary/40 mb-8 italic">COGNITIVE FRONT</p>
-                          <h3 className="text-3xl font-black uppercase italic tracking-tighter leading-tight text-white">{currentQuestion.front}</h3>
+                          <h3 className="text-3xl font-black uppercase italic tracking-tighter leading-tight text-white">
+                            <MathRenderer text={currentQuestion.front} />
+                          </h3>
                         </div>
                         <div className={cn("backface-hidden w-full rotate-y-180", isFlipped ? "block" : "hidden")}>
                           <p className="text-[10px] font-black uppercase tracking-[0.4em] text-accent/40 mb-8 italic">RETRIEVED DATA</p>
-                          <h3 className="text-2xl font-black uppercase italic tracking-tighter leading-tight text-accent">{currentQuestion.back}</h3>
+                          <h3 className="text-2xl font-black uppercase italic tracking-tighter leading-tight text-accent">
+                            <MathRenderer text={currentQuestion.back} />
+                          </h3>
                         </div>
                       </div>
                     </div>
@@ -1297,7 +1424,9 @@ const QuizView = ({
                     <div className="min-h-[300px] flex flex-col items-center justify-center space-y-10">
                       <div className="text-center space-y-4">
                         <div className="flex items-center justify-center gap-4">
-                          <h3 className="text-3xl font-black uppercase italic tracking-tighter text-white">{currentQuestion.question}</h3>
+                          <h3 className="text-3xl font-black uppercase italic tracking-tighter text-white">
+                            <MathRenderer text={currentQuestion.question} />
+                          </h3>
                           <div className="flex gap-2">
                             <Button 
                               onClick={() => openEditModal(currentQuestion.originalIndex ?? null)}
@@ -1363,7 +1492,7 @@ const QuizView = ({
                     <div className="space-y-8">
                       <div className="flex items-start justify-between gap-4">
                         <h3 className="text-2xl font-black leading-tight tracking-tighter uppercase italic text-left text-white/90">
-                          {currentQuestion.type === 'fill_in_blank' ? "COMPLETE THE NEURAL SEQUENCE:" : (currentQuestion.question || "PROCESS THIS INPUT:")}
+                          <MathRenderer text={currentQuestion.type === 'fill_in_blank' ? "COMPLETE THE NEURAL SEQUENCE:" : (currentQuestion.question || "PROCESS THIS INPUT:")} />
                         </h3>
                         <div className="flex items-center gap-2 shrink-0">
                           {currentQuestion.smartLink && (
@@ -1413,7 +1542,9 @@ const QuizView = ({
                                   <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center font-black italic text-[11px] transition-all border", isSelected ? "bg-white text-black border-transparent" : "bg-white/5 text-white/20 border-white/5")}>
                                     {String.fromCharCode(65 + i)}
                                   </div>
-                                  <span className="font-black text-xs uppercase tracking-tight text-white/80">{opt}</span>
+                                  <span className="font-black text-xs uppercase tracking-tight text-white/80">
+                                    <MathRenderer text={opt} />
+                                  </span>
                                 </div>
                                 {hasVerified && isCorrectOpt && <CheckCircle size={20} className="text-green-500" />}
                               </button>
@@ -1436,7 +1567,7 @@ const QuizView = ({
                                   : "border-white/5 text-white/20 hover:border-white/10"
                               )}
                             >
-                              {opt}
+                              <MathRenderer text={opt} />
                             </button>
                           ))}
                         </div>
@@ -1449,7 +1580,7 @@ const QuizView = ({
                               const answers = userAnswers[currentQuestionIndex] || [];
                               return (
                                 <React.Fragment key={i}>
-                                  <span>{part}</span>
+                                  <MathRenderer text={part} />
                                   {i < arr.length - 1 && (
                                     <input
                                       disabled={hasVerified}
@@ -1554,7 +1685,9 @@ const QuizView = ({
                                           {i + 1}
                                         </div>
                                       )}
-                                      <span className="font-black text-[11px] uppercase tracking-tight">{leftVal}</span>
+                                      <span className="font-black text-[11px] uppercase tracking-tight">
+                                        <MathRenderer text={leftVal} />
+                                      </span>
                                     </div>
                                   </button>
                                 );
@@ -1607,7 +1740,9 @@ const QuizView = ({
                                           {matchedLeftIdx! + 1}
                                         </div>
                                       )}
-                                      <span className="font-black text-[11px] uppercase tracking-tight">{rightVal}</span>
+                                      <span className="font-black text-[11px] uppercase tracking-tight">
+                                        <MathRenderer text={rightVal} />
+                                      </span>
                                     </div>
                                   </button>
                                 );
@@ -1631,9 +1766,9 @@ const QuizView = ({
                                    <div className="grid gap-2">
                                       {currentQuestion.matchingPairs?.map((pair: any, i: number) => (
                                         <div key={`sol-${i}`} className="flex items-center gap-2 text-xs font-bold text-white/60">
-                                          <span>{pair.prompt}</span>
+                                          <span><MathRenderer text={pair.prompt} /></span>
                                           <ArrowRight size={12} className="text-primary/40" />
-                                          <span className="text-white">{pair.match}</span>
+                                          <span className="text-white"><MathRenderer text={pair.match} /></span>
                                         </div>
                                       ))}
                                    </div>
@@ -1689,7 +1824,9 @@ const QuizView = ({
                                       {i + 1}
                                     </div>
                                   </div>
-                                  <span className="font-black text-xs uppercase italic tracking-tight flex-1 text-left">{step}</span>
+                                  <span className="font-black text-xs uppercase italic tracking-tight flex-1 text-left">
+                                    <MathRenderer text={step} />
+                                  </span>
                                   {hasVerified && (
                                     <div className="text-[10px] font-black uppercase text-white/20 tracking-widest">
                                       #{currentQuestion.orderingSteps.indexOf(step) + 1}
@@ -1844,7 +1981,9 @@ const QuizView = ({
                               {isCorrect(currentQuestion, userAnswers[currentQuestionIndex]) ? "CORRECT PROTOCOL!" : "LEARN: NEURAL RECALIBRATION"}
                             </h4>
                             {currentQuestion.explanation ? (
-                              <p className="text-sm font-medium text-white/70 italic leading-relaxed max-w-2xl">{currentQuestion.explanation}</p>
+                              <p className="text-sm font-medium text-white/70 italic leading-relaxed max-w-2xl">
+                                <MathRenderer text={currentQuestion.explanation} />
+                              </p>
                             ) : (
                               <p className="text-sm font-medium text-white/40 italic">No further data available for this session.</p>
                             )}
@@ -2246,7 +2385,9 @@ const QuizView = ({
                   <Checkbox checked={selectedIndices.has(idx)} onCheckedChange={() => toggleQuestionSelection(idx)} onClick={(e) => e.stopPropagation()} />
                   <div className="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center text-primary border border-white/5">{getIconForType(q.type)}</div>
                   <div className="min-w-0 flex-1">
-                    <h4 className="font-black truncate text-sm uppercase italic text-foreground">{q.type === 'flashcard' ? q.front : (q.question || "UNTITLED VECT")}</h4>
+                    <h4 className="font-black truncate text-sm uppercase italic text-foreground">
+                      <MathRenderer text={q.type === 'flashcard' ? q.front : (q.question || "UNTITLED VECT")} />
+                    </h4>
                     <div className="flex items-center gap-3 mt-1.5">
                       <Badge className="text-[8px] font-black uppercase h-4 px-2 bg-primary/10 text-primary border-0 rounded-md italic">{q.difficulty}</Badge>
                       <span className="text-[8px] text-white/20 font-black uppercase tracking-[0.2em] italic">{q.type.replace('_', ' ')}</span>
@@ -2384,6 +2525,8 @@ const QuizView = ({
                       !editForm.question.trim() ? "border-destructive/50" : "border-white/5"
                     )} 
                   />
+                  <MathLivePreview text={editForm.question} />
+                  <MathToolbar onInsert={(tex) => setEditForm({...editForm, question: editForm.question + tex})} />
                   {!editForm.question.trim() && (
                     <p className="text-[10px] text-destructive font-bold uppercase italic tracking-widest">Question is required</p>
                   )}
@@ -2527,6 +2670,14 @@ const QuizView = ({
                   >
                     <Plus size={16} /> Add option
                   </button>
+                  <div className="px-2">
+                     <MathToolbar onInsert={(tex) => {
+                       const newOptions = [...editForm.options];
+                       const lastIdx = newOptions.length - 1;
+                       newOptions[lastIdx] = newOptions[lastIdx] + tex;
+                       setEditForm({...editForm, options: newOptions});
+                     }} />
+                  </div>
                 </div>
               </div>
             )}
@@ -2536,6 +2687,7 @@ const QuizView = ({
                 <div className="space-y-4">
                   <Label className="text-sm font-bold text-white uppercase italic tracking-tight">Statement</Label>
                   <Textarea value={editForm.question} onChange={(e) => setEditForm({...editForm, question: e.target.value})} className="min-h-[100px] bg-[#111] border-2 border-white/5 focus:border-primary/50 rounded-xl p-4 text-sm font-medium" />
+                  <MathToolbar onInsert={(tex) => setEditForm({...editForm, question: editForm.question + tex})} />
                 </div>
                 <div className="space-y-4">
                   <Label className="text-sm font-bold text-white uppercase italic tracking-tight">Correct Answer</Label>
@@ -2568,6 +2720,7 @@ const QuizView = ({
                     placeholder="Translate this, complete the phrase, etc."
                     className="h-12 bg-white/[0.03] border-2 border-white/5 focus:border-primary/50 rounded-xl px-4 text-sm font-medium"
                   />
+                  <MathToolbar onInsert={(tex) => setEditForm({...editForm, question: editForm.question + tex})} />
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -2681,6 +2834,7 @@ const QuizView = ({
                 <div className="space-y-4">
                   <Label className="text-sm font-bold text-white uppercase italic tracking-tight">Question</Label>
                   <Textarea value={editForm.question} onChange={(e) => setEditForm({...editForm, question: e.target.value})} className="min-h-[100px] bg-[#111] border-2 border-white/5 focus:border-primary/50 rounded-xl p-4 text-sm font-medium" />
+                  <MathToolbar onInsert={(tex) => setEditForm({...editForm, question: editForm.question + tex})} />
                 </div>
                 <div className="space-y-4">
                   <Label className="text-sm font-bold text-white uppercase italic tracking-tight">Correct Answer & Variations</Label>
@@ -2712,6 +2866,7 @@ const QuizView = ({
                     </div>
                   </div>
                   <Textarea value={editForm.question} onChange={(e) => handleQuestionChange(e.target.value)} placeholder="The capital of France is (BLACK)." className="min-h-[120px] bg-[#111] border-2 border-white/5 focus:border-primary/50 rounded-xl p-4 text-sm font-medium" />
+                  <MathToolbar onInsert={(tex) => setEditForm({...editForm, question: editForm.question + tex})} />
                 </div>
                 <div className="space-y-4">
                   <Label className="text-sm font-bold text-white uppercase italic tracking-tight">Blank Answers</Label>
@@ -2736,10 +2891,14 @@ const QuizView = ({
                 <div className="space-y-4">
                   <Label className="text-sm font-bold text-white uppercase italic tracking-tight">Front (Concept)</Label>
                   <Textarea value={editForm.front} onChange={(e) => setEditForm({...editForm, front: e.target.value})} className="min-h-[100px] bg-[#111] border-2 border-white/5 focus:border-primary/50 rounded-xl p-4 text-sm font-medium" />
+                  <MathToolbar onInsert={(tex) => setEditForm({...editForm, front: editForm.front + tex})} />
+                  <MathLivePreview text={editForm.front} label="Front Preview" />
                 </div>
                 <div className="space-y-4">
                   <Label className="text-sm font-bold text-white uppercase italic tracking-tight">Back (Definition)</Label>
                   <Textarea value={editForm.back} onChange={(e) => setEditForm({...editForm, back: e.target.value})} className="min-h-[100px] bg-[#111] border-2 border-white/5 focus:border-primary/50 rounded-xl p-4 text-sm font-medium" />
+                  <MathToolbar onInsert={(tex) => setEditForm({...editForm, back: editForm.back + tex})} />
+                  <MathLivePreview text={editForm.back} label="Back Preview" />
                 </div>
               </div>
             )}
@@ -2759,6 +2918,7 @@ const QuizView = ({
                 <div className="space-y-4">
                   <Label className="text-sm font-bold text-white uppercase italic tracking-tight">Hidden Content</Label>
                   <Textarea value={editForm.correctAnswer} onChange={(e) => setEditForm({...editForm, correctAnswer: e.target.value})} className="min-h-[100px] bg-[#111] border-2 border-white/5 focus:border-primary/50 rounded-xl p-4 text-sm font-medium" />
+                  <MathToolbar onInsert={(tex) => setEditForm({...editForm, correctAnswer: editForm.correctAnswer + tex})} />
                 </div>
                 <div className="space-y-4">
                   <Label className="text-sm font-bold text-white uppercase italic tracking-tight">Audio Clue (Import from files)</Label>
@@ -2856,6 +3016,7 @@ const QuizView = ({
                     placeholder="E.g., Match the terms with their definitions"
                     className="min-h-[80px] bg-[#111] border-2 border-white/5 rounded-xl p-4 text-sm font-medium focus:border-primary/50 text-white" 
                   />
+                  <MathToolbar onInsert={(tex) => setEditForm({...editForm, question: editForm.question + tex})} />
                 </div>
                 
                 <div className="space-y-4">
@@ -2946,6 +3107,7 @@ const QuizView = ({
                     placeholder="What do you want to ask?"
                     className="min-h-[100px] bg-[#111] border-2 border-white/5 rounded-xl p-4 text-sm font-medium focus:border-primary/50" 
                   />
+                  <MathToolbar onInsert={(tex) => setEditForm({...editForm, question: editForm.question + tex})} />
                 </div>
 
                 <div className="space-y-4">
@@ -3043,6 +3205,8 @@ const QuizView = ({
                       placeholder="A subtle clue to help remember..."
                       className="bg-white/[0.03] border-2 border-white/5 rounded-xl min-h-[80px] text-sm text-white focus:ring-1 focus:ring-primary/50"
                     />
+                    <MathToolbar onInsert={(tex) => setEditForm({...editForm, hint: (editForm.hint || '') + tex})} />
+                    <MathLivePreview text={editForm.hint || ''} label="Hint Preview" />
                   </div>
                   <div className="space-y-2 text-left">
                     <Label className="text-[9px] font-black uppercase tracking-[0.3em] text-white/30 italic">Explanation (Shown after answering)</Label>
@@ -3052,6 +3216,8 @@ const QuizView = ({
                       placeholder="Why this answer is correct..."
                       className="bg-white/[0.03] border-2 border-white/5 rounded-xl min-h-[80px] text-sm text-white focus:ring-1 focus:ring-primary/50"
                     />
+                    <MathToolbar onInsert={(tex) => setEditForm({...editForm, explanation: (editForm.explanation || '') + tex})} />
+                    <MathLivePreview text={editForm.explanation || ''} label="Explanation Preview" />
                   </div>
                 </div>
               )}

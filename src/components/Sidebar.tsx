@@ -54,6 +54,8 @@ interface SidebarProps {
   onOpenSettings?: () => void;
   activeTab: string;
   onTabChange: (tab: any) => void;
+  onExportLuvia?: () => void;
+  onImportLuvia?: () => void;
 }
 
 const Sidebar = ({ 
@@ -69,7 +71,9 @@ const Sidebar = ({
   onToggle,
   onOpenSettings,
   activeTab,
-  onTabChange
+  onTabChange,
+  onExportLuvia,
+  onImportLuvia
 }: SidebarProps) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [folderToEdit, setFolderToEdit] = useState<FolderType | null>(null);
@@ -466,8 +470,23 @@ const Sidebar = ({
           </div>
         </div>
       </ScrollArea>
-      <div className="p-4 mt-auto border-t border-border/10">
-        <Button variant="ghost" onClick={onOpenSettings} className="w-full justify-start gap-3 px-3 py-2 h-auto"><Settings size={18} /><span className="font-semibold text-sm">Settings</span></Button>
+      <div className="p-4 mt-auto border-t border-border/10 flex flex-col gap-2">
+        {onExportLuvia && onImportLuvia && (
+          <div className="flex gap-2 w-full">
+            <Button variant="ghost" onClick={onExportLuvia} className="flex-1 justify-center gap-2 px-2 py-2 h-auto text-primary hover:text-primary hover:bg-primary/10" title="Exportar Backup">
+              <Download size={14} />
+              <span className="font-semibold text-[10px] uppercase tracking-wider">Exportar</span>
+            </Button>
+            <Button variant="ghost" onClick={onImportLuvia} className="flex-1 justify-center gap-2 px-2 py-2 h-auto text-primary hover:text-primary hover:bg-primary/10" title="Importar Backup">
+              <FolderDown size={14} />
+              <span className="font-semibold text-[10px] uppercase tracking-wider">Importar</span>
+            </Button>
+          </div>
+        )}
+        <Button variant="ghost" onClick={onOpenSettings} className="w-full justify-start gap-3 px-3 py-2 h-auto">
+          <Settings size={18} />
+          <span className="font-semibold text-sm">Settings</span>
+        </Button>
       </div>
       <FolderEditModal isOpen={!!folderToEdit} onClose={() => setFolderToEdit(null)} folder={folderToEdit!} onUpdate={(f) => setFolders(prev => prev.map(old => old.id === f.id ? f : old))} noteCount={notes.filter(n => n.folderId === folderToEdit?.id).length} />
       {noteToEdit && <NoteEditModal isOpen={!!noteToEdit} onClose={() => setNoteToEdit(null)} note={noteToEdit} onUpdate={(n) => setNotes(prev => prev.map(old => old.id === n.id ? n : old))} />}

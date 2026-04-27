@@ -33,7 +33,8 @@ interface NotebookProps {
   fontFamily?: 'sans' | 'serif' | 'mono';
   fontSize?: number;
   width?: NotebookWidth;
-  spellcheckEnabled?: boolean;
+  isSpellcheckEnabled?: boolean;
+  isShortcutMenuOnly?: boolean;
 }
 
 interface ResizeState {
@@ -77,7 +78,8 @@ const Notebook = ({
   fontFamily = 'sans', 
   fontSize = 18, 
   width = 'wide',
-  spellcheckEnabled = true
+  isSpellcheckEnabled = true,
+  isShortcutMenuOnly = false
 }: NotebookProps) => {
   const editorRef = useRef<HTMLDivElement>(null);
   const [showFloatingMenu, setShowFloatingMenu] = useState(false);
@@ -91,6 +93,8 @@ const Notebook = ({
   const [pendingPaste, setPendingPaste] = useState<{ html: string; text: string; type: 'table' } | null>(null);
   const { toast } = useToast();
   const menuTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const mathBlockToEditRef = useRef<HTMLElement | null>(null);
+  const [pendingMathEdit, setPendingMathEdit] = useState<string | null>(null);
   const [activeBlock, setActiveBlock] = useState({ label: 'Texto', icon: 'p' });
   const [activeStyles, setActiveStyles] = useState({
     bold: false,
@@ -245,10 +249,49 @@ const Notebook = ({
     
     window.addEventListener('luvia-smart-link', handleSmartLink);
 
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.altKey && e.key.toLowerCase() === 'f') {
+        e.preventDefault();
+        
+        // Ensure editor is focused
+        if (editorRef.current && !editorRef.current.contains(document.activeElement)) {
+          editorRef.current.focus();
+        }
+
+        const selection = window.getSelection();
+        if (selection && selection.rangeCount > 0) {
+          const range = selection.getRangeAt(0);
+          
+          // Get position from caret or selection
+          let rect = range.getBoundingClientRect();
+          
+          // If the rect is empty (sometimes happens with empty lines), try first client rect
+          if (rect.width === 0 && rect.height === 0) {
+            const rects = range.getClientRects();
+            if (rects.length > 0) rect = rects[0];
+          }
+
+          // Final fallback if still empty
+          if (rect.width === 0 && rect.height === 0 && editorRef.current) {
+             rect = editorRef.current.getBoundingClientRect();
+          }
+
+          setMenuPosition({
+            x: rect.left + rect.width / 2,
+            y: rect.top - 10
+          });
+          setShowFloatingMenu(true);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown);
+
     return () => {
       document.removeEventListener('mousemove', handleGlobalMouseMove);
       document.removeEventListener('mouseup', handleGlobalMouseUp);
       window.removeEventListener('luvia-smart-link', handleSmartLink);
+      window.removeEventListener('keydown', handleGlobalKeyDown);
     };
   }, [isResizing, setContent, toast]);
 
@@ -269,6 +312,29 @@ const Notebook = ({
     setCitationToDelete(null);
   };
 
+  const handleInsertMathComplete = (newNode: HTMLElement | null) => {
+    if (mathBlockToEditRef.current && newNode) {
+      mathBlockToEditRef.current.replaceWith(newNode);
+    } else if (newNode) {
+      // New math block - insert at cursor
+      const selection = window.getSelection();
+      if (selection && selection.rangeCount > 0) {
+        const range = selection.getRangeAt(0);
+        range.deleteContents();
+        range.insertNode(newNode);
+        
+        // Move cursor after
+        const newRange = document.createRange();
+        newRange.setStartAfter(newNode);
+        newRange.collapse(true);
+        selection.removeAllRanges();
+        selection.addRange(newRange);
+      }
+    }
+    mathBlockToEditRef.current = null;
+    setPendingMathEdit(null);
+    if (editorRef.current) setContent(editorRef.current.innerHTML);
+  };
 
   const stats = useMemo(() => {
     const text = content.replace(/<[^>]*>/g, ' ');
@@ -279,6 +345,42 @@ const Notebook = ({
 
   const handleEditorClick = (e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
+    
+    // Handle Math block clicks
+    const mathBlock = target.closest('.luvia-math') as HTMLElement;
+    if (mathBlock) {
+      const isDelete = target.closest('.math-delete-btn');
+      const isEdit = target.closest('.math-edit-btn');
+      
+      if (isDelete) {
+        e.preventDefault();
+        e.stopPropagation();
+        mathBlock.remove();
+        if (editorRef.current) setContent(editorRef.current.innerHTML);
+        toast({ title: "Ecuación eliminada" });
+        return;
+      }
+      
+      // If clicking edit button, the formula itself, or the render wrapper
+      if (isEdit || target.closest('.math-render') || !target.closest('.math-controls')) {
+        e.preventDefault();
+        e.stopPropagation();
+        const latex = mathBlock.getAttribute('data-latex') || '';
+        mathBlockToEditRef.current = mathBlock;
+        setPendingMathEdit(latex);
+        
+        // REPOSITION MENU: Make it pop up right where the equation is
+        const rect = mathBlock.getBoundingClientRect();
+        setMenuPosition({
+          x: rect.left + rect.width / 2,
+          y: rect.top
+        });
+        
+        setShowFloatingMenu(true);
+        return;
+      }
+    }
+
     const bq = target.closest('blockquote') as HTMLElement;
     
     // 1. Citation bar click detection
@@ -353,10 +455,14 @@ const Notebook = ({
       const hasText = selection && selection.toString().trim().length > 0;
       const isHoveringMenu = document.querySelector('.floating-menu-container:hover');
       const isMenuFocused = document.activeElement?.closest('.floating-menu-container');
-      if (!hasText && !isHoveringMenu && !isMenuFocused) {
-        setShowFloatingMenu(false);
-      }
-    }, 400);
+      const isMathModalOpen = !!document.getElementById('math-modal-container');
+      const isEditingMath = !!pendingMathEdit;
+      
+      // If we have text, or we are interacting with the menu/modal/editing math, don't hide
+      if (hasText || isHoveringMenu || isMenuFocused || isMathModalOpen || isEditingMath) return;
+      
+      setShowFloatingMenu(false);
+    }, 500); // Increased timeout to 500ms
   };
 
   const handleSelectionChange = useCallback(() => {
@@ -405,7 +511,7 @@ const Notebook = ({
     const hasTextSelection = selection.toString().trim().length > 0;
     const tableCell = element.closest('td, th') as HTMLTableCellElement | null;
     
-    if (hasTextSelection && !isAnchored) {
+    if (hasTextSelection && !isAnchored && !isShortcutMenuOnly) {
       if (menuTimeoutRef.current) clearTimeout(menuTimeoutRef.current);
       
       // Fix: Get rect from getClientRects to snap to the FIRST line of selection
@@ -462,7 +568,7 @@ const Notebook = ({
       setShowTableToolbar(false);
       setActiveTableCell(null);
     }
-  }, [isAnchored]);
+  }, [isAnchored, isShortcutMenuOnly, pendingMathEdit]);
 
   useEffect(() => {
     document.addEventListener('selectionchange', handleSelectionChange);
@@ -671,20 +777,73 @@ const Notebook = ({
       } else {
         // Normal paste
         e.preventDefault();
-        if (html) {
-          const parser = new DOMParser();
-          const doc = parser.parseFromString(html, 'text/html');
-          doc.querySelectorAll('*').forEach(el => {
-            const element = el as HTMLElement;
-            if (element.style) {
-              element.style.fontSize = '';
-              element.style.fontFamily = '';
-              element.style.lineHeight = '';
-            }
-          });
-          document.execCommand('insertHTML', false, doc.body.innerHTML);
+        
+        let contentToInsert = html || text;
+        
+        // Detect LaTeX patterns and convert to Luvia Math blocks
+        if (text && (text.includes('$$') || text.includes('\\frac') || text.includes('\\sum') || text.includes('\\int') || text.includes('\\infty') || /\$[^$\n]+\$/.test(text))) {
+           let processedText = text;
+           // Block math: $$ ... $$
+           processedText = processedText.replace(/\$\$(.*?)\$\$/gs, (match, latex) => {
+             try {
+               const cleanLatex = latex.trim();
+               const mathHtml = (window as any).katex.renderToString(cleanLatex, { displayMode: true, throwOnError: false });
+               return `<span class="luvia-math group/math relative inline-block transition-all cursor-pointer border border-transparent hover:border-primary/20 rounded px-1 mx-0.5" contenteditable="false" data-latex="${cleanLatex.replace(/"/g, '&quot;')}">
+                 <span class="math-render">${mathHtml}</span>
+                 <span class="math-controls absolute -top-10 left-1/2 -translate-x-1/2 opacity-0 group-hover/math:opacity-100 flex items-center gap-1 bg-[#1a1a1a] border border-white/10 rounded-lg p-1.5 shadow-2xl transition-opacity z-[100] pointer-events-auto">
+                   <button class="math-edit-btn p-1 hover:bg-primary/20 rounded text-primary/60 hover:text-primary transition-colors">
+                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                   </button>
+                   <button class="math-delete-btn p-1 hover:bg-red-500/20 rounded text-red-500/60 hover:text-red-500 transition-colors">
+                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+                   </button>
+                 </span>
+               </span>`;
+             } catch (err) {
+               return match;
+             }
+           });
+           
+           // Inline math: $ ... $ (avoiding single $ signs in text)
+           processedText = processedText.replace(/\$([^\$\n]+?)\$/g, (match, latex) => {
+             if (latex.length < 1) return match;
+             try {
+               const cleanLatex = latex.trim();
+               const mathHtml = (window as any).katex.renderToString(cleanLatex, { displayMode: false, throwOnError: false });
+               return `<span class="luvia-math group/math relative inline-block transition-all cursor-pointer border border-transparent hover:border-primary/20 rounded px-1 mx-0.5" contenteditable="false" data-latex="${cleanLatex.replace(/"/g, '&quot;')}">
+                 <span class="math-render">${mathHtml}</span>
+                 <span class="math-controls absolute -top-10 left-1/2 -translate-x-1/2 opacity-0 group-hover/math:opacity-100 flex items-center gap-1 bg-[#1a1a1a] border border-white/10 rounded-lg p-1.5 shadow-2xl transition-opacity z-[100] pointer-events-auto">
+                   <button class="math-edit-btn p-1 hover:bg-primary/20 rounded text-primary/60 hover:text-primary transition-colors">
+                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                   </button>
+                   <button class="math-delete-btn p-1 hover:bg-red-500/20 rounded text-red-500/60 hover:text-red-500 transition-colors">
+                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+                   </button>
+                 </span>
+               </span>`;
+             } catch (err) {
+               return match;
+             }
+           });
+
+           document.execCommand('insertHTML', false, processedText.replace(/\n/g, '<br>'));
+        } else {
+          if (html) {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+            doc.querySelectorAll('*').forEach(el => {
+              const element = el as HTMLElement;
+              if (element.style) {
+                element.style.fontSize = '';
+                element.style.fontFamily = '';
+                element.style.lineHeight = '';
+              }
+            });
+            document.execCommand('insertHTML', false, doc.body.innerHTML);
+          }
+          else if (text) document.execCommand('insertText', false, text);
         }
-        else if (text) document.execCommand('insertText', false, text);
+        
         if (editorRef.current) setContent(editorRef.current.innerHTML);
       }
     }
@@ -760,6 +919,49 @@ const Notebook = ({
       const selection = window.getSelection();
       if (selection && selection.rangeCount > 0 && selection.isCollapsed) {
         const range = selection.getRangeAt(0);
+        
+        // Logic for deleting luvia-math blocks
+        const container = range.startContainer;
+        const offset = range.startOffset;
+
+        // Check if cursor is at the very beginning of a block
+        if (offset === 0) {
+          const block = container.nodeType === 3 ? container.parentElement : (container as HTMLElement);
+          const currentBlock = block?.closest('p, h1, h2, h3, li, blockquote');
+          
+          if (currentBlock) {
+            const prev = currentBlock.previousElementSibling as HTMLElement;
+            if (prev && prev.classList?.contains('luvia-math')) {
+              e.preventDefault();
+              prev.remove();
+              if (editorRef.current) setContent(editorRef.current.innerHTML);
+              return;
+            }
+          }
+        }
+        
+        // Check children if cursor is in an element node
+        if (container.nodeType === 1) {
+          const prevNode = container.childNodes[offset - 1] as HTMLElement;
+          if (prevNode && prevNode.classList?.contains('luvia-math')) {
+            e.preventDefault();
+            prevNode.remove();
+            if (editorRef.current) setContent(editorRef.current.innerHTML);
+            return;
+          }
+        }
+
+        // If we are IN a text node, check if it's the first child and its previous sibling is math
+        if (container.nodeType === 3 && offset === 0) {
+           const prev = container.previousSibling as HTMLElement;
+           if (prev && prev.classList?.contains('luvia-math')) {
+             e.preventDefault();
+             prev.remove();
+             if (editorRef.current) setContent(editorRef.current.innerHTML);
+             return;
+           }
+        }
+
         const li = range.startContainer.nodeType === 3 
           ? range.startContainer.parentElement?.closest('li') 
           : (range.startContainer as HTMLElement).closest('li');
@@ -988,7 +1190,10 @@ const Notebook = ({
             setActiveBlock={setActiveBlock}
             activeStyles={activeStyles}
             isAnchored={true}
-            onToggleAnchor={() => setIsAnchored(false)}
+            onToggleAnchor={() => setIsAnchored(!isAnchored)}
+            isShortcutMenuOnly={isShortcutMenuOnly}
+            pendingMathEdit={pendingMathEdit}
+            onInsertMathComplete={handleInsertMathComplete}
           />
         </div>
       )}
@@ -997,10 +1202,28 @@ const Notebook = ({
         <div 
           className={cn(
             "mx-auto pt-8 pb-96 px-12 group/notebook relative text-left transition-all duration-500 min-h-[calc(100vh-200px)]",
-            widthClass
+            widthClass,
+            isSpellcheckEnabled ? "spellcheck-true" : "spellcheck-false"
           )}
+          spellCheck={isSpellcheckEnabled}
           onDoubleClick={handleMarginDoubleClick}
         >
+          {showFloatingMenu && !isAnchored && (
+            <FloatingMenu 
+              position={menuPosition} 
+              onClose={() => setShowFloatingMenu(false)} 
+              editorRef={editorRef}
+              setContent={setContent}
+              activeBlock={activeBlock}
+              setActiveBlock={setActiveBlock}
+              activeStyles={activeStyles}
+              isAnchored={false}
+              onToggleAnchor={() => setIsAnchored(true)}
+              isShortcutMenuOnly={isShortcutMenuOnly}
+              pendingMathEdit={pendingMathEdit}
+              onInsertMathComplete={handleInsertMathComplete}
+            />
+          )}
           <div className="mb-8">
             <div className="flex flex-wrap items-center gap-2">
               {tags.map(tag => (
@@ -1060,7 +1283,68 @@ const Notebook = ({
               contentEditable
               onInput={handleInput}
               onClick={handleEditorClick}
+              onDoubleClick={handleEditorClick}
               onPaste={handlePaste}
+              onKeyUp={(e) => {
+                if (e.key === '$' || e.key === 'Enter') {
+                  const selection = window.getSelection();
+                  if (!selection?.rangeCount) return;
+                  const range = selection.getRangeAt(0);
+                  const node = range.startContainer;
+                  
+                  // We only auto-transform in text nodes
+                  if (node.nodeType !== Node.TEXT_NODE) return;
+                  
+                  const text = node.textContent || '';
+                  const pos = range.startOffset;
+                  const beforeCursor = text.substring(0, pos);
+                  
+                  // Pattern: \command{...}$$ or \command$$ or even just \command 
+                  // But we use $$ as the "seal" to transform
+                  const match = beforeCursor.match(/(\\[a-zA-Z]+(?:\{[^{}]*\}|[^{}\$])*)\$\$$/);
+                  
+                  if (match) {
+                    const latex = match[1];
+                    const fullMatch = match[0];
+                    
+                    // Select the raw text to replace
+                    range.setStart(node, pos - fullMatch.length);
+                    range.setEnd(node, pos);
+                    range.deleteContents();
+                    
+                    const mathSpan = document.createElement('span');
+                    mathSpan.className = 'luvia-math inline-flex items-center group relative mx-1';
+                    mathSpan.contentEditable = 'false';
+                    mathSpan.setAttribute('data-latex', latex);
+                    mathSpan.innerHTML = `
+                      <span class="math-render"></span>
+                      <div class="math-controls absolute -top-8 left-1/2 -translate-x-1/2 bg-[#0d0d0f] border border-white/10 rounded-lg px-2 py-1 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-all pointer-events-auto z-50">
+                        <button class="math-edit-btn p-1 hover:bg-white/5 rounded text-white/40 hover:text-white transition-colors" title="Editar"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg></button>
+                        <button class="math-delete-btn p-1 hover:bg-destructive/20 rounded text-white/40 hover:text-destructive transition-colors" title="Eliminar"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg></button>
+                      </div>
+                    `;
+                    
+                    range.insertNode(mathSpan);
+                    const renderTarget = mathSpan.querySelector('.math-render') as HTMLElement;
+                    if (renderTarget && (window as any).katex) {
+                      try {
+                        (window as any).katex.render(latex, renderTarget, { throwOnError: false, displayMode: false });
+                      } catch (err) {
+                        console.error("Katex error:", err);
+                      }
+                    }
+                    
+                    // Move cursor after
+                    const newRange = document.createRange();
+                    newRange.setStartAfter(mathSpan);
+                    newRange.collapse(true);
+                    selection.removeAllRanges();
+                    selection.addRange(newRange);
+                    
+                    if (editorRef.current) setContent(editorRef.current.innerHTML);
+                  }
+                }
+              }}
               onMouseDown={handleMouseDown}
               onMouseMove={handleMouseMove}
               onMouseUp={handleSelectionChange}
@@ -1338,7 +1622,7 @@ const Notebook = ({
                   setTimeout(handleSelectionChange, 10);
                 }
               }}
-              spellCheck={spellcheckEnabled}
+              spellCheck={isSpellcheckEnabled}
               style={{ fontSize: `${fontSize}px` }}
               className={cn(
                 "editor-content w-full leading-relaxed min-h-[calc(100vh-320px)] outline-none text-foreground/80 min-h-[500px] pb-96",
@@ -2025,20 +2309,6 @@ const Notebook = ({
             </AlertDialogContent>
           </AlertDialog>
 
-          {showFloatingMenu && !isAnchored && (
-            <FloatingMenu 
-              position={menuPosition} 
-              onClose={() => setShowFloatingMenu(false)}
-              editorRef={editorRef}
-              setContent={setContent}
-              activeBlock={activeBlock}
-              setActiveBlock={setActiveBlock}
-              activeStyles={activeStyles}
-              isAnchored={false}
-              onToggleAnchor={() => setIsAnchored(true)}
-            />
-          )}
-
           {showImageToolbar && activeImage && (
             <ImageToolbar 
               position={menuPosition}
@@ -2111,6 +2381,49 @@ const Notebook = ({
         }
         .editor-content blockquote:hover {
           background: rgba(255, 255, 255, 0.02);
+        }
+        .luvia-math {
+          display: inline-block !important;
+          width: auto !important;
+          margin: 0 4px !important;
+          vertical-align: middle;
+          position: relative;
+          overflow: visible !important;
+        }
+        .luvia-math .math-controls {
+          position: absolute;
+          top: -36px;
+          left: 50%;
+          transform: translateX(-50%);
+          display: flex;
+          align-items: center;
+          gap: 2px;
+          background: #1a1a1f;
+          border: 1px solid rgba(255,255,255,0.1);
+          border-radius: 8px;
+          padding: 3px;
+          z-index: 9999;
+          opacity: 0;
+          pointer-events: none;
+          transition: opacity 0.15s;
+          white-space: nowrap;
+        }
+        .luvia-math:hover .math-controls {
+          opacity: 1;
+          pointer-events: auto;
+        }
+        .luvia-math .katex-display {
+          display: inline-block !important;
+          margin: 0 !important;
+          padding: 0 !important;
+        }
+        .luvia-math .katex {
+          font-size: 1.1em;
+          line-height: 1.2;
+        }
+        /* Fix huge cursor in Chrome/Safari */
+        .editor-content * {
+          overflow-wrap: break-word;
         }
       `}</style>
       
